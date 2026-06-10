@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.installed.cfg
+*.eggs
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Pixi
+.pixi/
+
+# Build outputs
+dist/
+build/
+wheels/
+
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Linting/Formatting
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+# Environment files (added by millhouse)
+*.env
+*.env.*
+*.local
+*.secret
+*.secrets
+config.local.*
+.config.local
+*.key
+*.pem
+*.p12
+.aws/credentials
+.ssh/id_*
+
+# Agent tooling (machine-specific, never tracked)
+.claude/
+.lab/
+AGENTS.md
+CLAUDE.md
+

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filename }} - QRDrop{% endblock %}
+
+{% block head %}
+<!-- Highlight.js - Light theme (default) -->
+<link rel="stylesheet" href="/static/vendor/highlight/styles/github.min.css" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)">
+<!-- Highlight.js - Dark theme -->
+<link rel="stylesheet" href="/static/vendor/highlight/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+{% endblock %}
+
+{% block content %}
+<div class="view-page view-text-page">
+    <!-- File Header -->
+    <header class="file-header">
+        <div class="file-header-left">
+            <a href="{% if parent_path %}/browse/{{ parent_path | urlencode }}{% else %}/{% endif %}" class="back-link" aria-label="Back to folder">
+                <span class="back-icon" aria-hidden="true">&larr;</span>
+                Back
+            </a>
+            <h1 class="file-title">{{ filename }}</h1>
+        </div>
+        <div class="file-header-right">
+            <span class="file-meta">{{ file_size }} &middot; {{ line_count }} lines</span>
+            <a href="/download/{{ path | urlencode }}" class="btn btn-primary btn-sm" download>Download</a>
+        </div>
+    </header>
+
+    <!-- Code Display -->
+    <div class="code-container">
+        <div class="code-wrapper">
+            <pre class="code-block language-{{ syntax_class }}"><code class="language-{{ syntax_class }}">{{ content }}</code></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/vendor/highlight/highlight.min.js" defer></script>
+<!-- Additional languages not in core bundle -->
+<script src="/static/vendor/highlight/languages/dockerfile.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/powershell.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/cmake.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/properties.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/scala.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/groovy.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/latex.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/fsharp.min.js" defer></script>
+<script src="/static/vendor/highlight/languages/vim.min.js" defer></script>
+<script defer>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof hljs === 'undefined') return;
+        // toml ships in the core bundle as 'ini' syntax; alias the language
+        // so <code class="language-toml"> still highlights instead of falling
+        // back to auto-detection.
+        try { hljs.registerAliases(['toml'], { languageName: 'ini' }); } catch (_) { /* ignore */ }
+        hljs.highlightAll();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - QRDrop</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+    <main class="login-container">
+        <div class="login-card">
+            <h1 class="login-title">QRDrop</h1>
+            <p class="login-subtitle">Enter password to access files</p>
+
+            {% if error %}
+            <div class="error-message" role="alert">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="/login" class="login-form">
+                <input type="hidden" name="next" value="{{ next | default('/') }}">
+
+                <div class="form-group">
+                    <label for="password" class="visually-hidden">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="Enter password"
+                        required
+                        autofocus
+                        autocomplete="current-password"
+                        class="password-input"
+                    >
+                </div>
+
+                <button type="submit" class="login-button">
+                    Access Files
+                </button>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

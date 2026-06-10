@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filename }} - QRDrop{% endblock %}
+
+{% block content %}
+<div class="view-page view-image-page">
+    <!-- File Header -->
+    <header class="file-header">
+        <div class="file-header-left">
+            <a href="{% if parent_path %}/browse/{{ parent_path | urlencode }}{% else %}/{% endif %}" class="back-link" aria-label="Back to folder">
+                <span class="back-icon" aria-hidden="true">&larr;</span>
+                Back
+            </a>
+            <h1 class="file-title">{{ filename }}</h1>
+        </div>
+        <div class="file-header-right">
+            <span class="file-meta">{{ file_size }}</span>
+            <a href="/download/{{ path | urlencode }}" class="btn btn-primary btn-sm" download>Download</a>
+        </div>
+    </header>
+
+    <!-- Image Display -->
+    <div class="image-container">
+        <img
+            src="/download/{{ path | urlencode }}"
+            alt="{{ filename }}"
+            class="image-preview"
+            loading="lazy"
+            decoding="async"
+            onerror="this.hidden=true;this.nextElementSibling.hidden=false;"
+        >
+        <div class="image-error" role="alert" hidden>
+            <span class="image-error-icon" aria-hidden="true">🖼️</span>
+            <p class="image-error-text">This image could not be displayed.</p>
+            <a href="/download/{{ path | urlencode }}" class="btn btn-secondary btn-sm" download>Download instead</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+[workspace]
+name = "qrdrop"
+version = "0.0.0"
+description = "Instant file sharing from your terminal"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+# Every pip invocation in this project refuses sdists: wheels are pure
+# archives, while sdist installs execute arbitrary build code.
+[activation.env]
+PIP_ONLY_BINARY = ":all:"
+
+[tasks]
+help = { cmd = "echo 'Available tasks: build, test, lint, format, dev, lock, audit, clean, docker-build, docker-run, docker-publish, build-dist, publish-pypi, release'" }
+# Hash-verified install of the locked dependency set (runtime + dev), then
+# the project itself with no dependency resolution at all.
+build = { cmd = "python -m pip install --require-hashes -r requirements-dev.lock && python -m pip install -e . --no-deps" }
+# Regenerate uv.lock + requirements-dev.lock; refuses releases younger than
+# the supply-chain cooldown window.
+lock = { cmd = "python scripts/lock.py" }
+audit = { cmd = "python -m pip_audit --skip-editable --ignore-vuln PYSEC-2026-196" }
+test = { cmd = "python -m pytest tests/ -v --cov=src/qrdrop --cov-report=term-missing --ignore=tests/e2e" }
+test-e2e = { cmd = "python -m pytest tests/e2e/ -v" }
+lint = { cmd = "python -m ruff check src/ tests/" }
+format = { cmd = "python -m ruff format src/ tests/" }
+dev = { cmd = "python -m qrdrop" }
+clean = { cmd = "python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in ['dist', 'build', '.pytest_cache', 'htmlcov', '.ruff_cache', '.venv']]; [p.unlink() for p in pathlib.Path('.').glob('*.egg-info') if p.exists()]; [p.unlink() for p in pathlib.Path('src').glob('*.egg-info') if p.exists()]; pathlib.Path('.coverage').unlink(missing_ok=True)\"" }
+# Local and release image builds share scripts/docker_build.py so the
+# release workflow cannot drift from what `pixi run docker-build` produces.
+docker-build = { cmd = "python scripts/docker_build.py" }
+docker-run = { cmd = "docker run --rm -p 8000:8000 -v .:/data itsloopyo/qrdrop:dev", depends-on = ["docker-build"] }
+# Needs a docker-container buildx builder with arm64 emulation (CI sets this
+# up via the QEMU/buildx actions) and a logged-in Docker Hub session.
+docker-publish = { cmd = "python scripts/docker_build.py --push" }
+# --no-isolation: build with the hash-locked hatchling from the dev lock
+# instead of letting `build` resolve a fresh one from PyPI.
+build-dist = { cmd = "python -m build --no-isolation" }
+publish-pypi = { cmd = "python -m twine upload dist/*", depends-on = ["build-dist"] }
+release = { cmd = "python scripts/release.py" }
+
+[dependencies]
+python = ">=3.11"
+pip = "*"
+uv = ">=0.6"

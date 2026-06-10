@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}QRDrop{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
+    <header class="app-header">
+        <div class="header-content">
+            <div class="header-left">
+                <a href="/" class="logo">QRDrop</a>
+                {% block breadcrumbs %}{% endblock %}
+            </div>
+            <nav class="header-nav">
+                <a href="/logout" class="logout-link">Logout</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-content" id="main-content" tabindex="-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+        <p>Powered by <a href="https://github.com/itsloopyo/qrdrop">qrdrop</a></p>
+    </footer>
+
+    <!-- App-wide dialog (replaces native confirm/alert) -->
+    <div class="app-dialog" id="app-dialog" hidden role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+        <div class="app-dialog-backdrop" data-dialog-dismiss></div>
+        <div class="app-dialog-content" role="document">
+            <h2 class="app-dialog-title" id="app-dialog-title"></h2>
+            <p class="app-dialog-message" id="app-dialog-message"></p>
+            <input type="text" class="app-dialog-input" id="app-dialog-input" hidden>
+            <div class="app-dialog-actions">
+                <button type="button" class="btn btn-secondary" id="app-dialog-cancel" data-dialog-dismiss>Cancel</button>
+                <button type="button" class="btn btn-primary" id="app-dialog-confirm">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App-wide toast region -->
+    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="/static/app.js" defer></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

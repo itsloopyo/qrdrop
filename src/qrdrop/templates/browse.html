@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}{{ current_path or 'Home' }} - QRDrop{% endblock %}
+
+{% block breadcrumbs %}
+{% if breadcrumbs|length > 1 %}
+<nav class="header-breadcrumbs" aria-label="Breadcrumb">
+    <ol class="breadcrumb-list">
+        {% for crumb in breadcrumbs[1:] %}
+        <li class="breadcrumb-item">
+            {% if loop.last %}
+            <span class="breadcrumb-current" aria-current="page">{{ crumb.name }}</span>
+            {% else %}
+            <a href="{% if crumb.path %}/browse/{{ crumb.path | urlencode }}{% else %}/{% endif %}" class="breadcrumb-link">{{ crumb.name }}</a>
+            <span class="breadcrumb-separator" aria-hidden="true">/</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="browse-page" data-current-path="{{ current_path }}">
+    <!-- Upload Drop Zone (shown when dragging files) -->
+    <div class="upload-dropzone" id="upload-dropzone" hidden>
+        <div class="dropzone-content">
+            <span class="dropzone-icon" aria-hidden="true">📤</span>
+            <p class="dropzone-text">Drop files here to upload</p>
+            <p class="dropzone-subtext">Files will be uploaded to: <strong>{{ current_path or '/' }}</strong></p>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <span class="item-count">
+                {{ total_items }} item{% if total_items != 1 %}s{% endif %}
+                <span class="item-breakdown">
+                    ({{ dir_count }} folder{% if dir_count != 1 %}s{% endif %}, {{ file_count }} file{% if file_count != 1 %}s{% endif %})
+                </span>
+            </span>
+        </div>
+        <div class="toolbar-right">
+            {% if allow_upload %}
+            <button type="button" id="upload-btn" class="btn btn-primary btn-sm" title="Upload files">
+                <span aria-hidden="true">↑</span> Upload
+            </button>
+            {% endif %}
+            {% if allow_modify %}
+            <button type="button" id="new-folder-btn" class="btn btn-secondary btn-sm" title="Create a new folder">
+                <span aria-hidden="true">＋</span> New Folder
+            </button>
+            {% endif %}
+            <button type="button" id="select-all-btn" class="btn btn-secondary btn-sm">Select All</button>
+            <button type="button" id="select-none-btn" class="btn btn-secondary btn-sm">Select None</button>
+        </div>
+    </div>
+
+    <!-- Hidden file input for upload -->
+    <input type="file" id="upload-input" class="visually-hidden" multiple aria-label="Choose files to upload">
+
+    <!-- Selection Bar (shown when items selected) -->
+    <div class="selection-bar" id="selection-bar" hidden>
+        <span class="selection-count" id="selection-count" role="status" aria-live="polite">0 items selected</span>
+        <div class="selection-actions">
+            <label for="archive-format" class="visually-hidden">Archive format</label>
+            <select id="archive-format" class="archive-format-select">
+                <option value="zip">ZIP</option>
+                <option value="tar.gz">TAR.GZ</option>
+                <option value="tar.bz2">TAR.BZ2</option>
+            </select>
+            <button type="button" id="download-archive-btn" class="btn btn-primary btn-sm">
+                Download Selected
+            </button>
+        </div>
+    </div>
+
+    <!-- File List -->
+    {% if entries %}
+    <div class="file-list" role="table" aria-label="Files and folders">
+        <div class="file-list-header" role="row">
+            <span class="file-cell file-select" role="columnheader">
+                <span class="visually-hidden">Select</span>
+            </span>
+            <span class="file-cell file-icon" role="columnheader">
+                <span class="visually-hidden">Type</span>
+            </span>
+            <span class="file-cell file-name" role="columnheader"
+                  aria-sort="{% if sort_by == 'name' %}{{ 'ascending' if sort_order == 'asc' else 'descending' }}{% else %}none{% endif %}">
+                <a href="{% if current_path %}/browse/{{ current_path | urlencode }}{% else %}/{% endif %}?sort=name&order={% if sort_by == 'name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}"
+                   class="sort-header{% if sort_by == 'name' %} sort-active{% endif %}">
+                    Name
+                    {% if sort_by == 'name' %}
+                    <span class="sort-indicator" aria-hidden="true">{{ '▲' if sort_order == 'asc' else '▼' }}</span>
+                    {% endif %}
+                </a>
+            </span>
+            <span class="file-cell file-size" role="columnheader"
+                  aria-sort="{% if sort_by == 'size' %}{{ 'ascending' if sort_order == 'asc' else 'descending' }}{% else %}none{% endif %}">
+                <a href="{% if current_path %}/browse/{{ current_path | urlencode }}{% else %}/{% endif %}?sort=size&order={% if sort_by == 'size' and sort_order == 'asc' %}desc{% else %}asc{% endif %}"
+                   class="sort-header{% if sort_by == 'size' %} sort-active{% endif %}">
+                    Size
+                    {% if sort_by == 'size' %}
+                    <span class="sort-indicator" aria-hidden="true">{{ '▲' if sort_order == 'asc' else '▼' }}</span>
+                    {% endif %}
+                </a>
+            </span>
+            <span class="file-cell file-date" role="columnheader"
+                  aria-sort="{% if sort_by == 'modified' %}{{ 'ascending' if sort_order == 'asc' else 'descending' }}{% else %}none{% endif %}">
+                <a href="{% if current_path %}/browse/{{ current_path | urlencode }}{% else %}/{% endif %}?sort=modified&order={% if sort_by == 'modified' and sort_order == 'asc' %}desc{% else %}asc{% endif %}"
+                   class="sort-header{% if sort_by == 'modified' %} sort-active{% endif %}">
+                    Modified
+                    {% if sort_by == 'modified' %}
+                    <span class="sort-indicator" aria-hidden="true">{{ '▲' if sort_order == 'asc' else '▼' }}</span>
+                    {% endif %}
+                </a>
+            </span>
+            <span class="file-cell file-actions" role="columnheader">
+                <span class="visually-hidden">Actions</span>
+            </span>
+        </div>
+
+        {% for entry in entries %}
+        <div class="file-row{% if entry.is_hidden %} file-hidden{% endif %}" role="row" data-path="{{ entry.path }}">
+            <span class="file-cell file-select" role="cell">
+                <input
+                    type="checkbox"
+                    class="file-checkbox"
+                    data-path="{{ entry.path }}"
+                    data-testid="file-checkbox"
+                    aria-label="Select {{ entry.name }}"
+                >
+            </span>
+            <span class="file-cell file-icon" role="cell" aria-hidden="true">
+                {{ entry.icon }}
+            </span>
+            <span class="file-cell file-name" role="cell">
+                {% if entry.is_dir %}
+                <a href="/browse/{{ entry.path | urlencode }}" class="file-link file-link-dir">{{ entry.name }}</a>
+                {% else %}
+                <a href="/view/{{ entry.path | urlencode }}" class="file-link file-link-file">{{ entry.name }}</a>
+                {% endif %}
+            </span>
+            <span class="file-cell file-size" role="cell">
+                {{ entry.size_human }}
+            </span>
+            <span class="file-cell file-date" role="cell">
+                {{ entry.mtime }}
+            </span>
+            <span class="file-cell file-actions" role="cell">
+                {% if not entry.is_dir %}
+                <a href="/download/{{ entry.path | urlencode }}" class="action-btn download-btn" download aria-label="Download {{ entry.name }}" title="Download">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M8 1v9m0 0L4.5 6.5M8 10l3.5-3.5M2 12v2h12v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </a>
+                {% endif %}
+                {% if allow_modify %}
+                <button type="button" class="action-btn rename-btn" data-path="{{ entry.path }}" data-name="{{ entry.name }}" aria-label="Rename {{ entry.name }}" title="Rename">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M11.5 2.5l2 2L6 12l-2.5.5.5-2.5 7.5-7.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                {% endif %}
+                {% if allow_delete %}
+                <button type="button" class="action-btn delete-btn" data-path="{{ entry.path }}" data-name="{{ entry.name }}" aria-label="Delete {{ entry.name }}" title="Delete">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                {% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <span class="empty-icon" aria-hidden="true">📂</span>
+        <p class="empty-text">This folder is empty</p>
+        <p class="empty-subtext">Drag and drop files here or click Upload to add files</p>
+    </div>
+    {% endif %}
+
+    <!-- Upload Progress Modal -->
+    <div class="upload-modal" id="upload-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="upload-modal-title">
+        <div class="upload-modal-backdrop" id="upload-modal-backdrop"></div>
+        <div class="upload-modal-content">
+            <h2 class="upload-modal-title" id="upload-modal-title">Uploading Files</h2>
+            <div class="upload-progress-container">
+                <div class="upload-progress-bar-container">
+                    <div class="upload-progress-bar" id="upload-progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="upload-progress-info" aria-live="polite">
+                    <span class="upload-progress-text" id="upload-progress-text">Preparing upload...</span>
+                    <span class="upload-progress-percent" id="upload-progress-percent">0%</span>
+                </div>
+            </div>
+            <div class="upload-file-list" id="upload-file-list"></div>
+            <div class="upload-modal-actions">
+                <button type="button" id="upload-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="upload-close-btn" class="btn btn-primary" hidden>Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overwrite Confirmation Modal -->
+    <div class="upload-modal" id="overwrite-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="overwrite-modal-title">
+        <div class="upload-modal-backdrop" id="overwrite-modal-backdrop"></div>
+        <div class="upload-modal-content">
+            <h2 class="upload-modal-title" id="overwrite-modal-title">Files Already Exist</h2>
+            <p class="overwrite-message">The following files already exist in this directory:</p>
+            <div class="overwrite-file-list" id="overwrite-file-list"></div>
+            <p class="overwrite-question">Do you want to overwrite them?</p>
+            <div class="upload-modal-actions">
+                <button type="button" id="overwrite-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="overwrite-skip-btn" class="btn btn-secondary">Skip Existing</button>
+                <button type="button" id="overwrite-confirm-btn" class="btn btn-danger">Overwrite</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
