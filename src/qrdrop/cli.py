@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from qrdrop import __version__
@@ -86,6 +87,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Main entry point for the CLI."""
+    # The banner and QR code use box-drawing characters and emoji that the
+    # legacy Windows console encoding (cp1252) cannot represent. Force UTF-8
+    # output so the banner renders on every platform.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     args = parse_args()
 
     # Import here to avoid circular imports and speed up --help/--version

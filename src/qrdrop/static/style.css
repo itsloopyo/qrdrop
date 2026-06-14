@@ -119,33 +119,6 @@ body {
     outline-offset: 2px;
 }
 
-/* Skip link - visible only when focused via keyboard */
-.skip-link {
-    position: fixed;
-    top: var(--space-sm);
-    left: var(--space-sm);
-    z-index: 1300;
-    padding: var(--space-sm) var(--space-md);
-    background-color: var(--accent);
-    color: #fff;
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-150%);
-    transition: transform var(--transition-fast);
-}
-
-.skip-link:focus {
-    transform: translateY(0);
-    color: #fff;
-    text-decoration: none;
-}
-
-/* The main region is a focus target for the skip link; never show an
-   outline when it receives focus programmatically. */
-.main-content:focus {
-    outline: none;
-}
-
 /* Links */
 a {
     color: var(--accent);
@@ -398,6 +371,7 @@ a:hover {
     transition: all var(--transition-fast);
     text-decoration: none;
     border: 1px solid transparent;
+    white-space: nowrap;
 }
 
 .btn:hover {

@@ -48,6 +48,10 @@ htmlcov/
 # Logs
 *.log
 
+# Scratch server-output captures (may contain session passwords)
+out*.txt
+err*.txt
+
 # OS files
 .DS_Store
 Thumbs.db

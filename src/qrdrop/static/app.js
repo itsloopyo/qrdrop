@@ -563,7 +563,10 @@
                 if (top) {
                     // If the upload is still in flight, don't let Esc close the upload
                     // modal (matches the "Cancel" button's explicit-action semantics).
-                    if (top.id === 'upload-modal' && uploadAbortController) {
+                    if (top.id === 'upload-modal') {
+                        if (!uploadAbortController) {
+                            closeUploadModal();
+                        }
                         return;
                     }
                     // The app-dialog cleans up its own listeners via the Cancel button click;
@@ -594,6 +597,7 @@
     let uploadAbortController = null;
     let pendingFiles = [];
     let existingFiles = [];
+    let uploadsSucceeded = false;
 
     // Format file size for display
     function formatFileSize(bytes) {
@@ -615,10 +619,17 @@
         }
     }
 
-    // Close upload modal (returns true if modal was open)
+    // Close upload modal (returns true if modal was open). Reloads the page
+    // whenever at least one file made it to the server, so the listing never
+    // goes stale — including after a cancelled batch with earlier successes.
     function closeUploadModal() {
         var modal = document.getElementById('upload-modal');
-        return modal && !modal.hidden ? closeModal(modal) : false;
+        var closed = modal && !modal.hidden ? closeModal(modal) : false;
+        if (closed && uploadsSucceeded) {
+            uploadsSucceeded = false;
+            window.location.reload();
+        }
+        return closed;
     }
 
     // Show overwrite confirmation modal
@@ -706,6 +717,7 @@
 
         // Show upload modal
         showUploadModal();
+        uploadsSucceeded = false;
 
         // Reset UI
         var fileList = document.getElementById('upload-file-list');
@@ -778,6 +790,7 @@
                 if (xhr.status >= 200 && xhr.status < 300 && response && response.success) {
                     addFileToUploadList(file.name, 'success', file.size);
                     uploadedSize += file.size;
+                    uploadsSucceeded = true;
                 } else {
                     failedCount++;
                     var reason = (response && response.error) || ('HTTP ' + xhr.status);
@@ -953,8 +966,6 @@
         if (uploadCloseBtn) {
             uploadCloseBtn.addEventListener('click', function() {
                 closeUploadModal();
-                // Refresh page to show new files
-                window.location.reload();
             });
         }
 
@@ -964,7 +975,6 @@
                 // Only close if upload is complete
                 if (!uploadAbortController) {
                     closeUploadModal();
-                    window.location.reload();
                 }
             });
         }

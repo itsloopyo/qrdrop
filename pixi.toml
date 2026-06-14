@@ -24,6 +24,8 @@ test-e2e = { cmd = "python -m pytest tests/e2e/ -v" }
 lint = { cmd = "python -m ruff check src/ tests/" }
 format = { cmd = "python -m ruff format src/ tests/" }
 dev = { cmd = "python -m qrdrop" }
+dev-upload = { cmd = "python -m qrdrop --upload" }
+dev-modify = { cmd = "python -m qrdrop --modify" }
 clean = { cmd = "python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in ['dist', 'build', '.pytest_cache', 'htmlcov', '.ruff_cache', '.venv']]; [p.unlink() for p in pathlib.Path('.').glob('*.egg-info') if p.exists()]; [p.unlink() for p in pathlib.Path('src').glob('*.egg-info') if p.exists()]; pathlib.Path('.coverage').unlink(missing_ok=True)\"" }
 # Local and release image builds share scripts/docker_build.py so the
 # release workflow cannot drift from what `pixi run docker-build` produces.
