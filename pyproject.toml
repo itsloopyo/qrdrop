@@ -1,6 +1,6 @@
 [project]
 name = "qrdrop"
-version = "0.1.1"
+version = "0.1.2"
 description = "Instant file sharing from your terminal - share files over LAN with a simple command"
 readme = "README.md"
 license = "MIT"
