@@ -1,6 +1,6 @@
 [workspace]
 name = "qrdrop"
-version = "0.1.2"
+version = "1.0.0"
 description = "Instant file sharing from your terminal"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
@@ -18,7 +18,7 @@ build = { cmd = "python -m pip install --require-hashes -r requirements-dev.lock
 # Regenerate uv.lock + requirements-dev.lock; refuses releases younger than
 # the supply-chain cooldown window.
 lock = { cmd = "python scripts/lock.py" }
-audit = { cmd = "python -m pip_audit --skip-editable --ignore-vuln PYSEC-2026-196" }
+audit = { cmd = "python scripts/audit.py" }
 test = { cmd = "python -m pytest tests/ -v --cov=src/qrdrop --cov-report=term-missing --ignore=tests/e2e" }
 test-e2e = { cmd = "python -m pytest tests/e2e/ -v" }
 lint = { cmd = "python -m ruff check src/ tests/" }

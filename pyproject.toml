@@ -1,6 +1,6 @@
 [project]
 name = "qrdrop"
-version = "0.1.2"
+version = "1.0.0"
 description = "Instant file sharing from your terminal - share files over LAN with a simple command"
 readme = "README.md"
 license = "MIT"
@@ -33,11 +33,11 @@ classifiers = [
 # Bump via `pixi run lock` (enforces the two-week release cooldown), retest,
 # release.
 dependencies = [
-    "starlette==1.0.1",
+    "starlette==1.1.0",
     "uvicorn==0.46.0",
     "jinja2==3.1.6",
     "qrcode==8.2",
-    "python-multipart==0.0.27",
+    "python-multipart==0.0.30",
     "aiofiles==25.1.0",
     # Transitive
     "anyio==4.13.0",

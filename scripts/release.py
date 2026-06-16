@@ -27,6 +27,11 @@ def main() -> None:
         sys.exit("working tree is dirty; commit or stash first")
     git("pull", "--ff-only")
 
+    # Run the same gate CI runs, before anything is committed or pushed, so a
+    # failure never leaves a tag behind that CI then rejects.
+    for task in ("test", "lint", "audit"):
+        subprocess.run(["pixi", "run", task], check=True)
+
     major, minor, patch = map(
         int, VERSION_RE.search(VERSION_FILES[0].read_text()).groups()[1:]
     )
