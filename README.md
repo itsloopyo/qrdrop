@@ -82,13 +82,13 @@ The web UI lets you:
 - **View** files inline: syntax-highlighted code (Python, Rust, Go, TypeScript, shell, and dozens more), images, and PDFs
 - **Download** any single file, or select several and grab them as one **ZIP, TAR.GZ, or TAR.BZ2** archive
 
-### 4. Allow changes (optional)
+### 4. Restrict changes (optional)
 
-QRDrop is **read-only by default**. Opt in to more:
+QRDrop allows **full access by default** (downloads, uploads, delete, new folders + rename). Restrict it:
 
 ```bash
-uvx qrdrop --upload    # downloads and uploads only
-uvx qrdrop --modify    # downloads, uploads, delete, new folders + rename
+uvx qrdrop --upload      # downloads and uploads only (no delete/rename)
+uvx qrdrop --readonly    # downloads only (no writes at all)
 ```
 
 ## Usage Examples
@@ -118,8 +118,8 @@ Options:
                        auto-detected IP is the container's (env: QRDROP_PUBLIC_HOST)
   --password TEXT      Use specific password instead of generating one
   --hide-dotfiles      Exclude files starting with '.' from listings
-  --upload             Allow file uploads
-  --modify             Allow uploads, deletions, and directory create/rename (implies --upload)
+  --upload             Restrict writes to uploads only (no deletions or directory create/rename)
+  --readonly           Disable all writes; browse and download only
   --timeout SECONDS    Expire sessions after this many seconds (default: sessions
                        last until the server stops)
   -q, --quiet          Suppress startup banner
@@ -129,7 +129,7 @@ Options:
 
 ## Docker
 
-Images are published to Docker Hub as [`itsloopyo/qrdrop`](https://hub.docker.com/r/itsloopyo/qrdrop) on every release. Mount the directory you want to share at `/data`, forward a port to 8000, and pass your machine's LAN IP as `--public-host`:
+Images are published to Docker Hub as [`itsloopyo/qrdrop`](https://hub.docker.com/r/itsloopyo/qrdrop) on every release. Mount the directory you want to share at `/data`, forward a port to 8000, and pass your machine's LAN IP to `--public-host`, like this:
 
 ```bash
 docker run --rm -p 8000:8000 -v /path/to/share:/data itsloopyo/qrdrop --public-host 192.168.1.50
@@ -140,12 +140,12 @@ docker run --rm -p 8000:8000 -v /path/to/share:/data itsloopyo/qrdrop --public-h
 The startup banner, including the generated password and QR code, goes to the container logs, so run in the foreground or check `docker logs`. Any `qrdrop` flags can be appended:
 
 ```bash
-docker run --rm -p 9000:8000 -v "$PWD:/data" itsloopyo/qrdrop --public-host 192.168.1.50:9000 --password correct-horse --modify
+docker run --rm -p 9000:8000 -v "$PWD:/data" itsloopyo/qrdrop --public-host 192.168.1.50:9000 --password correct-horse --readonly
 ```
 
 The container always listens on port 8000 internally; pick your external port with `-p <port>:8000` rather than `--port`, and if it differs from 8000, include it in `--public-host` (as in the example above) so the advertised URLs use the published port.
 
-The image is multi-stage (uv on Alpine), runs as a non-root user, and has a built-in healthcheck against `/health`. To share read-write (with `--upload` or `--modify`), the mounted directory must be writable by uid 1000.
+The image is multi-stage (uv on Alpine), runs as a non-root user, and has a built-in healthcheck against `/health`. Writes are enabled by default, so the mounted directory must be writable by uid 1000 (or pass `--readonly` to serve without writes).
 
 ## Development
 

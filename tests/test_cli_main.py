@@ -2,7 +2,7 @@
 
 ``parse_args`` is covered in ``test_cli.py``; this module locks in the wiring
 that ``main()`` performs: port selection (Docker vs. host), password handling,
-the ``--modify`` permission implications, banner suppression, and the log
+the ``--upload``/``--readonly`` permission implications, banner suppression, and the log
 redaction filter that keeps the ``?auth=`` password out of uvicorn's logs.
 """
 
@@ -99,12 +99,13 @@ class TestPassword:
 
 
 class TestPermissions:
-    def test_default_no_upload_no_delete(
+    def test_default_allows_upload_and_delete(
         self, monkeypatch: pytest.MonkeyPatch, harness: dict
     ) -> None:
         _run_main(monkeypatch, ["--quiet"])
-        assert harness["config"].allow_upload is False
-        assert harness["config"].allow_delete is False
+        assert harness["config"].allow_upload is True
+        assert harness["config"].allow_delete is True
+        assert harness["config"].allow_modify is True
 
     def test_upload_flag_enables_upload_only(
         self, monkeypatch: pytest.MonkeyPatch, harness: dict
@@ -112,13 +113,15 @@ class TestPermissions:
         _run_main(monkeypatch, ["--upload", "--quiet"])
         assert harness["config"].allow_upload is True
         assert harness["config"].allow_delete is False
+        assert harness["config"].allow_modify is False
 
-    def test_modify_implies_upload_and_delete(
+    def test_readonly_disables_all_writes(
         self, monkeypatch: pytest.MonkeyPatch, harness: dict
     ) -> None:
-        _run_main(monkeypatch, ["--modify", "--quiet"])
-        assert harness["config"].allow_upload is True
-        assert harness["config"].allow_delete is True
+        _run_main(monkeypatch, ["--readonly", "--quiet"])
+        assert harness["config"].allow_upload is False
+        assert harness["config"].allow_delete is False
+        assert harness["config"].allow_modify is False
 
     def test_hide_dotfiles_flag_disables_show_hidden(
         self, monkeypatch: pytest.MonkeyPatch, harness: dict

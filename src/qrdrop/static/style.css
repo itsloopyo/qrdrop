@@ -972,6 +972,15 @@ a:hover {
     .file-title {
         font-size: var(--text-lg);
     }
+
+    .toolbar-right {
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .toolbar-right .btn {
+        flex: 1 1 calc(50% - var(--space-sm));
+    }
 }
 
 /* =================================

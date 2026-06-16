@@ -21,7 +21,7 @@ class TestParseArgs:
         assert ns.password is None
         assert ns.hide_dotfiles is False
         assert ns.upload is False
-        assert ns.modify is False
+        assert ns.readonly is False
         assert ns.timeout is None
         assert ns.quiet is False
         assert ns.public_host is None
@@ -46,9 +46,13 @@ class TestParseArgs:
         ns = _run_with_argv(monkeypatch, ["--upload"])
         assert ns.upload is True
 
-    def test_modify_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        ns = _run_with_argv(monkeypatch, ["--modify"])
-        assert ns.modify is True
+    def test_readonly_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ns = _run_with_argv(monkeypatch, ["--readonly"])
+        assert ns.readonly is True
+
+    def test_upload_and_readonly_mutually_exclusive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with pytest.raises(SystemExit):
+            _run_with_argv(monkeypatch, ["--upload", "--readonly"])
 
     def test_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ns = _run_with_argv(monkeypatch, ["--timeout", "120"])

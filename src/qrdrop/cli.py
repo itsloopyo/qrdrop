@@ -48,15 +48,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Exclude files starting with '.' from listings",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--upload",
         action="store_true",
-        help="Allow file uploads",
+        help="Restrict writes to uploads only (no deletions or directory create/rename)",
     )
-    parser.add_argument(
-        "--modify",
+    mode.add_argument(
+        "--readonly",
         action="store_true",
-        help="Allow uploads, deletions, and directory create/rename (implies --upload)",
+        help="Disable all writes; browse and download only",
     )
     parser.add_argument(
         "--timeout",
@@ -113,10 +114,11 @@ def main() -> None:
     # Generate or use provided password
     password = args.password if args.password else generate_password()
 
-    # Determine permissions (--modify implies --upload)
-    allow_upload = args.upload or args.modify
-    allow_delete = args.modify
-    allow_modify = args.modify
+    # Full modify rights by default; --upload restricts to uploads only,
+    # --readonly disables all writes.
+    allow_modify = not (args.upload or args.readonly)
+    allow_delete = allow_modify
+    allow_upload = not args.readonly
 
     # Create configuration
     config = AppConfig(
@@ -197,6 +199,7 @@ def main() -> None:
         port=port,
         log_level="warning" if args.quiet else "info",
         log_config=log_config,
+        ws="none",
     )
 
 
