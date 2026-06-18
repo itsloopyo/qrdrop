@@ -11,7 +11,7 @@ platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 PIP_ONLY_BINARY = ":all:"
 
 [tasks]
-help = { cmd = "echo 'Available tasks: build, test, lint, format, dev, lock, audit, clean, docker-build, docker-run, docker-publish, build-dist, publish-pypi, release'" }
+help = { cmd = "echo 'Available tasks: build, test, lint, format, dev, lock, audit, audit-fix, clean, docker-build, docker-run, docker-publish, build-dist, publish-pypi, release'" }
 # Hash-verified install of the locked dependency set (runtime + dev), then
 # the project itself with no dependency resolution at all.
 build = { cmd = "python -m pip install --require-hashes -r requirements-dev.lock && python -m pip install -e . --no-deps" }
@@ -19,6 +19,9 @@ build = { cmd = "python -m pip install --require-hashes -r requirements-dev.lock
 # the supply-chain cooldown window.
 lock = { cmd = "python scripts/lock.py" }
 audit = { cmd = "python scripts/audit.py" }
+# Bump the pins the cooldown audit flags as actionable, re-lock, reinstall,
+# and commit. release.py runs this before the audit gate.
+audit-fix = { cmd = "python scripts/audit_fix.py" }
 test = { cmd = "python -m pytest tests/ -v --cov=src/qrdrop --cov-report=term-missing --ignore=tests/e2e" }
 test-e2e = { cmd = "python -m pytest tests/e2e/ -v" }
 lint = { cmd = "python -m ruff check src/ tests/" }

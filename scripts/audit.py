@@ -13,9 +13,9 @@ import json
 import subprocess
 import sys
 import urllib.request
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
-from lock import COOLDOWN_DAYS
+from lock import COOLDOWN_DAYS, cooldown_cutoff
 
 # Advisories with no version-pinnable fix here (e.g. disputed or transitive).
 IGNORED_VULNS = ("PYSEC-2026-196",)
@@ -34,16 +34,17 @@ def published_before(package: str, version: str, cutoff: datetime) -> bool:
     return published < cutoff
 
 
-def main() -> int:
-    cutoff = datetime.now(UTC) - timedelta(days=COOLDOWN_DAYS)
+def run_report() -> dict:
     ignore_args = [arg for vuln in IGNORED_VULNS for arg in ("--ignore-vuln", vuln)]
     result = subprocess.run(
         [sys.executable, "-m", "pip_audit", "--skip-editable", *ignore_args, "--format", "json"],
         capture_output=True,
         text=True,
     )
-    report = json.loads(result.stdout)
+    return json.loads(result.stdout)
 
+
+def classify(report: dict, cutoff: datetime) -> tuple[list[dict], list[dict]]:
     actionable, deferred = [], []
     for dep in report["dependencies"]:
         for vuln in dep.get("vulns", []):
@@ -51,18 +52,30 @@ def main() -> int:
                 fix for fix in vuln["fix_versions"]
                 if published_before(dep["name"], fix, cutoff)
             ]
-            row = (dep["name"], dep["version"], vuln["id"], vuln["fix_versions"])
-            (actionable if installable else deferred).append(row)
+            finding = {
+                "name": dep["name"],
+                "version": dep["version"],
+                "id": vuln["id"],
+                "fix_versions": vuln["fix_versions"],
+                "installable": installable,
+            }
+            (actionable if installable else deferred).append(finding)
+    return actionable, deferred
+
+
+def main() -> int:
+    actionable, deferred = classify(run_report(), cooldown_cutoff())
 
     if deferred:
         print(f"Deferred ({COOLDOWN_DAYS}-day cooldown; re-flags once a fix ages out):")
-        for name, version, vid, fixes in deferred:
-            print(f"  {name} {version}  {vid}  fix: {', '.join(fixes) or 'none yet'}")
+        for f in deferred:
+            fixes = ", ".join(f["fix_versions"]) or "none yet"
+            print(f"  {f['name']} {f['version']}  {f['id']}  fix: {fixes}")
 
     if actionable:
         print("\nActionable (an installable fix is already past the cooldown):")
-        for name, version, vid, fixes in actionable:
-            print(f"  {name} {version}  {vid}  fix: {', '.join(fixes)}")
+        for f in actionable:
+            print(f"  {f['name']} {f['version']}  {f['id']}  fix: {', '.join(f['fix_versions'])}")
         return 1
 
     print(f"\nNo actionable vulnerabilities ({len(deferred)} deferred).")

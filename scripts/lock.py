@@ -12,8 +12,22 @@ from datetime import UTC, datetime, timedelta
 COOLDOWN_DAYS = 14
 
 
+def cooldown_cutoff() -> datetime:
+    """The exclude-newer boundary, truncated to midnight UTC.
+
+    uv's --exclude-newer takes an instant, and the audit must judge a fix
+    installable against the *same* instant the lock will use - otherwise a fix
+    published on the cutoff day is "actionable" to the audit yet rejected by the
+    lock, and the release wedges. Truncating to midnight is what makes both
+    sides agree.
+    """
+    return (datetime.now(UTC) - timedelta(days=COOLDOWN_DAYS)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+
 def main() -> None:
-    cutoff = (datetime.now(UTC) - timedelta(days=COOLDOWN_DAYS)).strftime("%Y-%m-%dT00:00:00Z")
+    cutoff = cooldown_cutoff().strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"Locking with --exclude-newer {cutoff} ({COOLDOWN_DAYS}-day cooldown)")
     subprocess.run(["uv", "lock", "--exclude-newer", cutoff], check=True)
     subprocess.run(

@@ -27,6 +27,10 @@ def main() -> None:
         sys.exit("working tree is dirty; commit or stash first")
     git("pull", "--ff-only")
 
+    # Apply (and commit) any dependency bumps the cooldown audit now considers
+    # actionable, so the audit gate below passes instead of aborting the release.
+    subprocess.run(["pixi", "run", "audit-fix"], check=True)
+
     # Run the same gate CI runs, before anything is committed or pushed, so a
     # failure never leaves a tag behind that CI then rejects.
     for task in ("test", "lint", "audit"):
