@@ -47,4 +47,5 @@ def create_app(config: AppConfig) -> ASGIApp:
     app = Starlette(routes=get_routes(STATIC_DIR))
     app.state.config = config
     app.state.templates = templates
+    templates.env.globals["site_name"] = config.root_dir.name or str(config.root_dir)
     return AuthMiddleware(app)

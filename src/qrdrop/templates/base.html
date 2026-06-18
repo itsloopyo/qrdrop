@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}QRDrop{% endblock %}</title>
+    <title>{% block title %}{{ site_name }}{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
     {% block head %}{% endblock %}
 </head>
@@ -11,7 +11,7 @@
     <header class="app-header">
         <div class="header-content">
             <div class="header-left">
-                <a href="/" class="logo">QRDrop</a>
+                <a href="/" class="logo">{{ site_name }}</a>
                 {% block breadcrumbs %}{% endblock %}
             </div>
             <nav class="header-nav">

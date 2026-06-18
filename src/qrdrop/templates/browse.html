@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ current_path or 'Home' }} - QRDrop{% endblock %}
+{% block title %}{{ page_title or site_name }}{% endblock %}
 
 {% block breadcrumbs %}
 {% if breadcrumbs|length > 1 %}

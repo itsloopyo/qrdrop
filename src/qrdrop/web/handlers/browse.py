@@ -113,6 +113,10 @@ async def browse_handler(request: Request) -> Response:
     # Calculate relative paths for links
     current_path = path.strip("/") if path else ""
 
+    # Title is the basename of the directory we're in; the template falls back
+    # to the served root's name (site_name) at the top level.
+    page_title = current_path.rsplit("/", 1)[-1] if current_path else ""
+
     # Build entry data with paths and icons, counting dirs/files in one pass
     entry_data = []
     dir_count = 0
@@ -148,6 +152,7 @@ async def browse_handler(request: Request) -> Response:
             "entries": entry_data,
             "breadcrumbs": breadcrumbs,
             "current_path": current_path,
+            "page_title": page_title,
             "total_items": len(entries),
             "dir_count": dir_count,
             "file_count": file_count,
