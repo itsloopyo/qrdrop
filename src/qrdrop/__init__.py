@@ -1,3 +1,3 @@
 """QRDrop - Instant file sharing from your terminal."""
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
