@@ -88,12 +88,19 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Main entry point for the CLI."""
-    # The banner and QR code use box-drawing characters and emoji that the
-    # legacy Windows console encoding (cp1252) cannot represent. Force UTF-8
-    # output so the banner renders on every platform.
+    # The banner and QR code use box-drawing characters and emoji. Force the
+    # Python side to emit UTF-8...
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
+
+    # ...and align the Windows console output codepage so it decodes those
+    # bytes as UTF-8 rather than the legacy OEM codepage (e.g. cp850), which
+    # otherwise renders the QR code as mojibake under launchers like pipx.
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
 
     args = parse_args()
 
