@@ -80,6 +80,15 @@ class TestQrCodeAutoLogin:
         assert "qrdrop_session" in response.cookies
         assert response.headers["location"] == "/browse/subdir"
 
+    def test_protocol_relative_path_does_not_redirect_off_site(
+        self, client: TestClient, app_config: AppConfig
+    ) -> None:
+        # %2F decodes into the ASGI path, giving "//evil.example/".
+        response = client.get(f"/%2Fevil.example/?auth={app_config.password}")
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
     def test_invalid_auth_param_redirects_to_login(self, client: TestClient) -> None:
         """Invalid auth param should redirect to login."""
         response = client.get("/?auth=wrong-password")

@@ -105,7 +105,10 @@ class AuthMiddleware:
             if validate_password(auth_password, config.password):
                 # Create session and redirect with cookie
                 token = create_session(config.session_timeout)
-                response = RedirectResponse(path, status_code=302)
+                # A path of "//host" would be a protocol-relative redirect
+                # off this server.
+                target = path if not path.startswith("//") else "/"
+                response = RedirectResponse(target, status_code=302)
                 set_session_cookie(response, token)
                 await response(scope, receive, send)
                 return
