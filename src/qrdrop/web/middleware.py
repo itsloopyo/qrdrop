@@ -5,11 +5,11 @@ except login and static files.
 """
 
 import asyncio
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.responses import RedirectResponse, Response
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 from qrdrop.core.password import validate_password
 from qrdrop.core.session import create_session, validate_session
@@ -18,6 +18,8 @@ SESSION_COOKIE_NAME = "qrdrop_session"
 _SESSION_COOKIE_PREFIX = f"{SESSION_COOKIE_NAME}="
 
 LOGIN_FAILURE_DELAY_SECONDS = 3.0
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _failed_login_lock = asyncio.Lock()
 
 
@@ -67,6 +69,13 @@ class AuthMiddleware:
         # Only process HTTP requests
         if scope["type"] != "http":
             await self.app(scope, receive, send)
+            return
+
+        send = _deny_framing(send)
+
+        if scope["method"] not in _SAFE_METHODS and not _is_same_origin(scope):
+            response = Response("Cross-origin request refused", status_code=403)
+            await response(scope, receive, send)
             return
 
         path = scope["path"]
@@ -132,6 +141,41 @@ class AuthMiddleware:
             return True
 
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)
+
+
+def _deny_framing(send: Send) -> Send:
+    """Wrap `send` so every response forbids being framed by another page."""
+
+    async def send_with_header(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            message["headers"] = [*message.get("headers", []), (b"x-frame-options", b"DENY")]
+        await send(message)
+
+    return send_with_header
+
+
+def _is_same_origin(scope: Scope) -> bool:
+    """Whether a state-changing request came from a page served by this host.
+
+    SameSite=Lax keeps the session cookie off cross-site writes, but every
+    port on the same host counts as the same site, so a page from another
+    server on this machine or LAN address could still post here with the
+    user's cookie. Browsers send Origin on such writes; a request without
+    one did not come from a cross-origin page.
+    """
+    origin = host = None
+    for header_name, header_value in scope.get("headers", []):
+        if header_name == b"origin":
+            origin = header_value.decode("latin-1")
+        elif header_name == b"host":
+            host = header_value.decode("latin-1")
+    if origin is None:
+        return True
+    try:
+        origin_netloc = urlsplit(origin).netloc
+    except ValueError:  # e.g. an unbalanced "[" in an IPv6 host
+        return False
+    return host is not None and origin_netloc.lower() == host.lower()
 
 
 def _get_session_cookie(scope: Scope) -> str | None:
