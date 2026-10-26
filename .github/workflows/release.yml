@@ -26,9 +26,6 @@ jobs:
           pixi-version: v0.70.1
           frozen: true
 
-      - name: Install locked dependencies
-        run: pixi run build
-
       - name: Run tests
         run: pixi run test
 
@@ -49,9 +46,6 @@ jobs:
         with:
           pixi-version: v0.70.1
           frozen: true
-
-      - name: Install locked dependencies
-        run: pixi run build
 
       - name: Build package
         run: pixi run build-dist

@@ -18,17 +18,17 @@ build = { cmd = "python -m pip install --require-hashes -r requirements-dev.lock
 # Regenerate uv.lock + requirements-dev.lock; refuses releases younger than
 # the supply-chain cooldown window.
 lock = { cmd = "python scripts/lock.py" }
-audit = { cmd = "python scripts/audit.py" }
+audit = { cmd = "python scripts/audit.py", depends-on = ["build"] }
 # Bump the pins the cooldown audit flags as actionable, re-lock, reinstall,
 # and commit. release.py runs this before the audit gate.
 audit-fix = { cmd = "python scripts/audit_fix.py" }
-test = { cmd = "python -m pytest tests/ -v --cov=src/qrdrop --cov-report=term-missing --ignore=tests/e2e" }
-test-e2e = { cmd = "python -m pytest tests/e2e/ -v" }
-lint = { cmd = "python -m ruff check src/ tests/" }
-format = { cmd = "python -m ruff format src/ tests/" }
-dev = { cmd = "python -m qrdrop" }
-dev-upload = { cmd = "python -m qrdrop --upload" }
-dev-readonly = { cmd = "python -m qrdrop --readonly" }
+test = { cmd = "python -m pytest tests/ -v --cov=src/qrdrop --cov-report=term-missing --ignore=tests/e2e", depends-on = ["build"] }
+test-e2e = { cmd = "python -m pytest tests/e2e/ -v", depends-on = ["build"] }
+lint = { cmd = "python -m ruff check src/ tests/", depends-on = ["build"] }
+format = { cmd = "python -m ruff format src/ tests/", depends-on = ["build"] }
+dev = { cmd = "python -m qrdrop", depends-on = ["build"] }
+dev-upload = { cmd = "python -m qrdrop --upload", depends-on = ["build"] }
+dev-readonly = { cmd = "python -m qrdrop --readonly", depends-on = ["build"] }
 clean = { cmd = "python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in ['dist', 'build', '.pytest_cache', 'htmlcov', '.ruff_cache', '.venv']]; [p.unlink() for p in pathlib.Path('.').glob('*.egg-info') if p.exists()]; [p.unlink() for p in pathlib.Path('src').glob('*.egg-info') if p.exists()]; pathlib.Path('.coverage').unlink(missing_ok=True)\"" }
 # Local and release image builds share scripts/docker_build.py so the
 # release workflow cannot drift from what `pixi run docker-build` produces.
@@ -39,7 +39,7 @@ docker-run = { cmd = "docker run --rm -p 8000:8000 -v .:/data itsloopyo/qrdrop:d
 docker-publish = { cmd = "python scripts/docker_build.py --push" }
 # --no-isolation: build with the hash-locked hatchling from the dev lock
 # instead of letting `build` resolve a fresh one from PyPI.
-build-dist = { cmd = "python -m build --no-isolation" }
+build-dist = { cmd = "python -m build --no-isolation", depends-on = ["build"] }
 publish-pypi = { cmd = "python -m twine upload dist/*", depends-on = ["build-dist"] }
 release = { cmd = "python scripts/release.py" }
 
