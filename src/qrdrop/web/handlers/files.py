@@ -110,6 +110,11 @@ async def view_handler(request: Request) -> Response:
     if target.is_dir():
         return RedirectResponse(f"/browse/{quote(path)}", status_code=302)
 
+    # Opening a FIFO blocks until a writer appears, and a device can read
+    # forever; either would pin a worker thread for good.
+    if not target.is_file():
+        return Response("Not found", status_code=404)
+
     file_size = target.stat().st_size
 
     if file_size > MAX_VIEW_SIZE:
@@ -184,6 +189,9 @@ async def download_handler(request: Request) -> Response:
 
     if target.is_dir():
         return RedirectResponse(f"/browse/{quote(path)}", status_code=302)
+
+    if not target.is_file():
+        return Response("Not found", status_code=404)
 
     mime_type, _ = mimetypes.guess_type(str(target))
     return _stream_file(

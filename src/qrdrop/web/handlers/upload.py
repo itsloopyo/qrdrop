@@ -133,6 +133,16 @@ async def _save_upload(
             filename=filename, success=False, error="Cannot upload over a symlink", status_code=403
         )
 
+    # Opening a FIFO for writing blocks until a reader appears, pinning the
+    # worker thread for good. A directory fails the open on its own.
+    if overwrite and target_file.exists() and not (target_file.is_file() or target_file.is_dir()):
+        return UploadResult(
+            filename=filename,
+            success=False,
+            error=f"'{filename}' is not a regular file",
+            status_code=409,
+        )
+
     if not overwrite and target_file.exists():
         return UploadResult(
             filename=filename,
