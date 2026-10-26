@@ -27,10 +27,7 @@ from qrdrop.core.filesystem import (
     SymlinkEscapeError,
     validate_path,
 )
-from qrdrop.web.handlers.files import content_disposition
-
-# Supported archive formats
-SUPPORTED_FORMATS = {"zip", "tar.gz", "tar.bz2"}
+from qrdrop.web.handlers._common import content_disposition
 
 _MEDIA_TYPES = {
     "zip": "application/zip",
@@ -84,7 +81,7 @@ def _write_archive(writer: _QueueWriter, files: list[tuple[Path, str]], format_t
         with zipfile.ZipFile(writer, "w", zipfile.ZIP_DEFLATED) as zf:
             for file_path, archive_path in files:
                 zf.write(file_path, archive_path)
-    else:  # tar.gz / tar.bz2 - validated against SUPPORTED_FORMATS upstream
+    else:  # tar.gz / tar.bz2 - validated against _MEDIA_TYPES upstream
         compression = "gz" if format_type == "tar.gz" else "bz2"
         with tarfile.open(fileobj=writer, mode=f"w|{compression}") as tf:
             for file_path, archive_path in files:
@@ -158,14 +155,10 @@ def _generate_archive_name(paths: list[str], format_type: str) -> str:
     Returns:
         str: A suitable filename for the archive.
     """
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-
     if len(paths) == 1:
-        # Single item - use its name
-        name = Path(paths[0]).name
-        return f"{name}.{format_type}"
+        return f"{Path(paths[0]).name}.{format_type}"
 
-    # Multiple items - use generic name with timestamp
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"archive_{timestamp}.{format_type}"
 
 
@@ -253,10 +246,9 @@ async def archive_handler(request: Request) -> Response:
     paths_json = form.get("paths", "[]")
     format_type = form.get("format", "zip")
 
-    # Validate format
-    if format_type not in SUPPORTED_FORMATS:
+    if format_type not in _MEDIA_TYPES:
         return Response(
-            f"Unsupported format: {format_type}. Supported: {', '.join(SUPPORTED_FORMATS)}",
+            f"Unsupported format: {format_type}. Supported: {', '.join(_MEDIA_TYPES)}",
             status_code=400,
         )
 
@@ -287,7 +279,7 @@ async def archive_handler(request: Request) -> Response:
 
     # No Content-Length: the size isn't known until the stream finishes.
     return StreamingResponse(
-        _stream_archive(files, str(format_type)),
-        media_type=_MEDIA_TYPES[str(format_type)],
+        _stream_archive(files, format_type),
+        media_type=_MEDIA_TYPES[format_type],
         headers={"Content-Disposition": content_disposition(archive_name, "attachment")},
     )

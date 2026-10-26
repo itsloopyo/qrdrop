@@ -1,4 +1,4 @@
-"""File viewing and download handlers.
+"""File viewing, download, and delete handlers.
 
 Handles single file viewing (text, images, PDFs) and streaming downloads.
 Uses async I/O for efficient file streaming without blocking.
@@ -15,12 +15,7 @@ import aiofiles
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from qrdrop.core.filesystem import (
-    PathTraversalError,
-    SymlinkEscapeError,
-    humanize_size,
-    validate_path,
-)
+from qrdrop.core.filesystem import humanize_size
 from qrdrop.core.filetypes import (
     get_syntax_class,
     is_binary_content,
@@ -28,7 +23,14 @@ from qrdrop.core.filetypes import (
     is_inline_document,
     is_text_file,
 )
-from qrdrop.web.handlers._common import resolve_existing_target
+from qrdrop.web.handlers._common import (
+    RequestValidationError,
+    content_disposition,
+    json_error,
+    os_error_reason,
+    resolve_existing_path,
+    resolve_existing_target,
+)
 
 # Chunk size for streaming downloads (128KB for better throughput)
 # Larger chunks reduce syscall overhead and improve network utilization
@@ -39,23 +41,6 @@ BINARY_CHECK_SIZE = 8192
 
 # Maximum file size for inline viewing (10MB)
 MAX_VIEW_SIZE = 10 * 1024 * 1024
-
-
-def content_disposition(filename: str, disposition: str) -> str:
-    """Build a header-injection-safe Content-Disposition value (RFC 6266).
-
-    Filenames on POSIX may legally contain characters that are unsafe in a
-    quoted HTTP header value (CR, LF, double-quote, backslash). Strip them
-    from the ASCII fallback and additionally provide a UTF-8 percent-encoded
-    `filename*` parameter so unicode names survive intact.
-    """
-    # ASCII-safe fallback: drop control chars, backslashes, and quotes; use
-    # a placeholder if nothing useful remains.
-    ascii_safe = "".join(c for c in filename if 32 <= ord(c) < 127 and c not in '"\\').strip()
-    if not ascii_safe:
-        ascii_safe = "download"
-    encoded = quote(filename, safe="")
-    return f"{disposition}; filename=\"{ascii_safe}\"; filename*=UTF-8''{encoded}"
 
 
 async def file_stream(path: Path) -> AsyncGenerator[bytes, None]:
@@ -72,10 +57,35 @@ async def file_stream(path: Path) -> AsyncGenerator[bytes, None]:
             yield chunk
 
 
+def _stream_file(target: Path, media_type: str, disposition: str, size: int) -> StreamingResponse:
+    return StreamingResponse(
+        file_stream(target),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": content_disposition(target.name, disposition),
+            "Content-Length": str(size),
+        },
+    )
+
+
 async def _read_text_content(target: Path) -> str:
     """Read a file as UTF-8 text, replacing undecodable bytes."""
     async with aiofiles.open(target, encoding="utf-8", errors="replace") as f:
         return await f.read()
+
+
+async def _sample_is_text(target: Path) -> bool:
+    """Sniff the head of a file of unknown type for binary content.
+
+    An unreadable file is treated as not text, so the viewer falls through to
+    the download redirect.
+    """
+    try:
+        async with aiofiles.open(target, "rb") as f:
+            sample = await f.read(BINARY_CHECK_SIZE)
+    except OSError:
+        return False
+    return not is_binary_content(sample)
 
 
 async def view_handler(request: Request) -> Response:
@@ -99,35 +109,27 @@ async def view_handler(request: Request) -> Response:
     if target.is_dir():
         return RedirectResponse(f"/browse/{quote(path)}", status_code=302)
 
-    stat_info = target.stat()
-    file_size = stat_info.st_size
+    file_size = target.stat().st_size
 
     if file_size > MAX_VIEW_SIZE:
         return RedirectResponse(f"/download/{quote(path)}", status_code=302)
 
-    # Get MIME type
     mime_type, _ = mimetypes.guess_type(str(target))
+    is_image = is_image_file(mime_type)
+    is_document = is_inline_document(mime_type)
 
-    # Build parent path for breadcrumb navigation
+    # Extension/MIME first; content sampling only for otherwise unknown types.
+    is_text = is_text_file(mime_type, target.name) or (
+        not is_image and not is_document and await _sample_is_text(target)
+    )
+
     parent_path = str(Path(path).parent)
     if parent_path == ".":
         parent_path = ""
 
     templates = request.app.state.templates
 
-    # Determine content type: check extension/MIME, then fall back to content sampling
-    is_known_text = is_text_file(mime_type, target.name)
-    if not is_known_text and not is_image_file(mime_type) and not is_inline_document(mime_type):
-        try:
-            async with aiofiles.open(target, "rb") as f:
-                sample = await f.read(BINARY_CHECK_SIZE)
-            if not is_binary_content(sample):
-                is_known_text = True
-        except OSError:
-            pass
-
-    # Handle text files
-    if is_known_text:
+    if is_text:
         content = await _read_text_content(target)
         return templates.TemplateResponse(
             request,
@@ -143,8 +145,7 @@ async def view_handler(request: Request) -> Response:
             },
         )
 
-    # Handle images
-    if is_image_file(mime_type):
+    if is_image:
         return templates.TemplateResponse(
             request,
             "view_image.html",
@@ -157,18 +158,9 @@ async def view_handler(request: Request) -> Response:
             },
         )
 
-    # Handle inline documents (PDF)
-    if is_inline_document(mime_type):
-        return StreamingResponse(
-            file_stream(target),
-            media_type=mime_type,
-            headers={
-                "Content-Disposition": content_disposition(target.name, "inline"),
-                "Content-Length": str(file_size),
-            },
-        )
+    if is_document:
+        return _stream_file(target, mime_type, "inline", file_size)
 
-    # For other file types, redirect to download
     return RedirectResponse(f"/download/{quote(path)}", status_code=302)
 
 
@@ -193,18 +185,8 @@ async def download_handler(request: Request) -> Response:
         return RedirectResponse(f"/browse/{quote(path)}", status_code=302)
 
     mime_type, _ = mimetypes.guess_type(str(target))
-    if not mime_type:
-        mime_type = "application/octet-stream"
-
-    file_size = target.stat().st_size
-
-    return StreamingResponse(
-        file_stream(target),
-        media_type=mime_type,
-        headers={
-            "Content-Disposition": content_disposition(target.name, "attachment"),
-            "Content-Length": str(file_size),
-        },
+    return _stream_file(
+        target, mime_type or "application/octet-stream", "attachment", target.stat().st_size
     )
 
 
@@ -221,33 +203,17 @@ async def delete_handler(request: Request) -> Response:
     """
     config = request.app.state.config
     if not config.allow_delete:
-        return JSONResponse(
-            {"success": False, "error": "Deletion not allowed"},
-            status_code=403,
-        )
+        return json_error("Deletion not allowed", 403)
 
-    path = request.path_params.get("path", "")
     root = config.root_dir
 
     try:
-        target = validate_path(root, path)
-    except (PathTraversalError, SymlinkEscapeError):
-        return JSONResponse(
-            {"success": False, "error": "Access denied"},
-            status_code=403,
-        )
-
-    if not target.exists():
-        return JSONResponse(
-            {"success": False, "error": "Not found"},
-            status_code=404,
-        )
+        target = resolve_existing_path(root, request.path_params.get("path", ""))
+    except RequestValidationError as e:
+        return json_error(e.message, e.status_code)
 
     if target.resolve() == root.resolve():
-        return JSONResponse(
-            {"success": False, "error": "Cannot delete root directory"},
-            status_code=403,
-        )
+        return json_error("Cannot delete root directory", 403)
 
     try:
         if target.is_dir():
@@ -255,12 +221,7 @@ async def delete_handler(request: Request) -> Response:
             await asyncio.to_thread(shutil.rmtree, target)
         else:
             target.unlink()
-
-        return JSONResponse({"success": True})
     except OSError as e:
-        # For OS-level failures str(e) embeds the absolute server-side path;
-        # strerror is the path-free reason.
-        return JSONResponse(
-            {"success": False, "error": f"Failed to delete: {e.strerror or e!s}"},
-            status_code=500,
-        )
+        return json_error(f"Failed to delete: {os_error_reason(e)}", 500)
+
+    return JSONResponse({"success": True})

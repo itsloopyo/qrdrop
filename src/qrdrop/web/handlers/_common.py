@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -25,6 +26,54 @@ class RequestValidationError(Exception):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+
+
+def json_error(message: str, status_code: int, **extra: Any) -> JSONResponse:
+    """Build the ``{"success": false, "error": ...}`` body every JSON endpoint uses."""
+    return JSONResponse({"success": False, "error": message, **extra}, status_code=status_code)
+
+
+def validation_error_response(
+    error: RequestValidationError, *, with_results: bool = False
+) -> JSONResponse:
+    """Build a JSON error response from a RequestValidationError."""
+    if with_results:
+        return json_error(error.message, error.status_code, results=[])
+    return json_error(error.message, error.status_code)
+
+
+def resolve_existing_path(root: Path, path: str) -> Path:
+    """Resolve `path` to an existing entry under root.
+
+    Raises:
+        RequestValidationError: 403 if the path escapes root, 404 if nothing
+            exists there.
+    """
+    try:
+        target = validate_path(root, path)
+    except (PathTraversalError, SymlinkEscapeError) as e:
+        raise RequestValidationError("Access denied", 403) from e
+
+    if not target.exists():
+        raise RequestValidationError("Not found", 404)
+
+    return target
+
+
+def resolve_existing_target(request: Request) -> Path | Response:
+    """Resolve the request's ``path`` param to an existing path under the root.
+
+    The plain-text counterpart of :func:`resolve_existing_path` for the
+    browse, view, and download handlers. Returns the resolved
+    :class:`~pathlib.Path` on success, or the error
+    :class:`~starlette.responses.Response` the caller should return as-is.
+    """
+    try:
+        return resolve_existing_path(
+            request.app.state.config.root_dir, request.path_params.get("path", "")
+        )
+    except RequestValidationError as e:
+        return Response(e.message, status_code=e.status_code)
 
 
 def validate_target_directory(root: Path, target_dir_path: str) -> Path:
@@ -72,33 +121,27 @@ def sanitize_name(name: str | None) -> str:
     return safe_name
 
 
-def validation_error_response(
-    error: RequestValidationError, *, with_results: bool = False
-) -> JSONResponse:
-    """Build a JSON error response from a RequestValidationError."""
-    payload: dict[str, Any] = {"error": error.message, "success": False}
-    if with_results:
-        payload["results"] = []
-    return JSONResponse(payload, status_code=error.status_code)
+def os_error_reason(error: OSError) -> str:
+    """The path-free reason for an OS-level failure.
 
-
-def resolve_existing_target(request: Request) -> Path | Response:
-    """Resolve the request's ``path`` param to an existing path under the root.
-
-    Centralizes the security boundary shared by the browse, view, and download
-    handlers: a path that escapes the root yields a 403 and a missing target
-    yields a 404. Returns the resolved :class:`~pathlib.Path` on success, or the
-    error :class:`~starlette.responses.Response` the caller should return as-is.
+    str(error) embeds the absolute server-side path, which must not reach the
+    client; strerror carries only the reason.
     """
-    path = request.path_params.get("path", "")
-    root = request.app.state.config.root_dir
+    return error.strerror or str(error)
 
-    try:
-        target = validate_path(root, path)
-    except (PathTraversalError, SymlinkEscapeError):
-        return Response("Access denied", status_code=403)
 
-    if not target.exists():
-        return Response("Not found", status_code=404)
+def content_disposition(filename: str, disposition: str) -> str:
+    """Build a header-injection-safe Content-Disposition value (RFC 6266).
 
-    return target
+    Filenames on POSIX may legally contain characters that are unsafe in a
+    quoted HTTP header value (CR, LF, double-quote, backslash). Strip them
+    from the ASCII fallback and additionally provide a UTF-8 percent-encoded
+    `filename*` parameter so unicode names survive intact.
+    """
+    # ASCII-safe fallback: drop control chars, backslashes, and quotes; use
+    # a placeholder if nothing useful remains.
+    ascii_safe = "".join(c for c in filename if 32 <= ord(c) < 127 and c not in '"\\').strip()
+    if not ascii_safe:
+        ascii_safe = "download"
+    encoded = quote(filename, safe="")
+    return f"{disposition}; filename=\"{ascii_safe}\"; filename*=UTF-8''{encoded}"

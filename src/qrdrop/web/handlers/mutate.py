@@ -1,6 +1,6 @@
 """Directory creation and rename handlers.
 
-Implements the create/rename operations enabled by the ``--modify`` flag:
+Implements the create/rename operations that full-modify mode enables:
 - Creating a new directory inside an existing, writable directory.
 - Renaming an existing file or directory in place (within its parent).
 
@@ -14,28 +14,15 @@ import os
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from qrdrop.core.filesystem import (
-    PathTraversalError,
-    SymlinkEscapeError,
-    validate_path,
-)
 from qrdrop.web.handlers._common import (
     RequestValidationError,
+    json_error,
+    os_error_reason,
+    resolve_existing_path,
     sanitize_name,
     validate_target_directory,
     validation_error_response,
 )
-
-
-def _parse_json_object(body: object) -> dict:
-    """Validate that a decoded JSON body is an object.
-
-    Raises:
-        RequestValidationError: If the body is not a JSON object.
-    """
-    if not isinstance(body, dict):
-        raise RequestValidationError("Request body must be a JSON object", 400)
-    return body
 
 
 async def _read_json_body(request: Request) -> dict:
@@ -49,7 +36,9 @@ async def _read_json_body(request: Request) -> dict:
     except json.JSONDecodeError as e:
         raise RequestValidationError("Invalid JSON body", 400) from e
 
-    return _parse_json_object(body)
+    if not isinstance(body, dict):
+        raise RequestValidationError("Request body must be a JSON object", 400)
+    return body
 
 
 async def mkdir_handler(request: Request) -> Response:
@@ -67,10 +56,7 @@ async def mkdir_handler(request: Request) -> Response:
     """
     config = request.app.state.config
     if not config.allow_modify:
-        return JSONResponse(
-            {"success": False, "error": "Modifications not allowed"},
-            status_code=403,
-        )
+        return json_error("Modifications not allowed", 403)
 
     root = config.root_dir
 
@@ -84,23 +70,12 @@ async def mkdir_handler(request: Request) -> Response:
     new_dir = target_dir / name
 
     if new_dir.exists():
-        return JSONResponse(
-            {"success": False, "error": f"'{name}' already exists", "exists": True},
-            status_code=409,
-        )
+        return json_error(f"'{name}' already exists", 409, exists=True)
 
     try:
         new_dir.mkdir()
     except OSError as e:
-        # For OS-level failures str(e) embeds the absolute server-side path;
-        # strerror is the path-free reason.
-        return JSONResponse(
-            {
-                "success": False,
-                "error": f"Failed to create directory: {e.strerror or e!s}",
-            },
-            status_code=500,
-        )
+        return json_error(f"Failed to create directory: {os_error_reason(e)}", 500)
 
     return JSONResponse({"success": True, "path": str(new_dir.relative_to(root))})
 
@@ -121,37 +96,18 @@ async def rename_handler(request: Request) -> Response:
     """
     config = request.app.state.config
     if not config.allow_modify:
-        return JSONResponse(
-            {"success": False, "error": "Modifications not allowed"},
-            status_code=403,
-        )
+        return json_error("Modifications not allowed", 403)
 
     root = config.root_dir
 
     try:
         body = await _read_json_body(request)
+        source = resolve_existing_path(root, body.get("path", ""))
     except RequestValidationError as e:
         return validation_error_response(e)
 
-    try:
-        source = validate_path(root, body.get("path", ""))
-    except (PathTraversalError, SymlinkEscapeError):
-        return JSONResponse(
-            {"success": False, "error": "Access denied"},
-            status_code=403,
-        )
-
-    if not source.exists():
-        return JSONResponse(
-            {"success": False, "error": "Not found"},
-            status_code=404,
-        )
-
     if source.resolve() == root.resolve():
-        return JSONResponse(
-            {"success": False, "error": "Cannot rename root directory"},
-            status_code=403,
-        )
+        return json_error("Cannot rename root directory", 403)
 
     try:
         new_name = sanitize_name(body.get("new_name"))
@@ -160,16 +116,10 @@ async def rename_handler(request: Request) -> Response:
 
     parent = source.parent
     if not os.access(parent, os.W_OK):
-        return JSONResponse(
-            {"success": False, "error": "Directory is not writable"},
-            status_code=403,
-        )
+        return json_error("Directory is not writable", 403)
 
     if new_name == source.name:
-        return JSONResponse(
-            {"success": False, "error": "New name is unchanged"},
-            status_code=400,
-        )
+        return json_error("New name is unchanged", 400)
 
     target = parent / new_name
 
@@ -177,19 +127,11 @@ async def rename_handler(request: Request) -> Response:
     # report the source itself; samefile() distinguishes that from a real
     # collision with another entry.
     if target.exists() and not target.samefile(source):
-        return JSONResponse(
-            {"success": False, "error": f"'{new_name}' already exists", "exists": True},
-            status_code=409,
-        )
+        return json_error(f"'{new_name}' already exists", 409, exists=True)
 
     try:
         source.rename(target)
     except OSError as e:
-        # For OS-level failures str(e) embeds the absolute server-side path;
-        # strerror is the path-free reason.
-        return JSONResponse(
-            {"success": False, "error": f"Failed to rename: {e.strerror or e!s}"},
-            status_code=500,
-        )
+        return json_error(f"Failed to rename: {os_error_reason(e)}", 500)
 
     return JSONResponse({"success": True, "path": str(target.relative_to(root))})

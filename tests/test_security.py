@@ -16,9 +16,9 @@ from starlette.testclient import TestClient
 
 from qrdrop.core.log_redaction import RedactAuthFilter, redact
 from qrdrop.web.app import AppConfig
+from qrdrop.web.handlers._common import content_disposition
 from qrdrop.web.handlers.archive import _collect_files
 from qrdrop.web.handlers.auth import _safe_next_path
-from qrdrop.web.handlers.files import content_disposition
 
 
 class TestSafeNextPath:

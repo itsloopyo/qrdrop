@@ -5,15 +5,13 @@ sorting (directories first), and human-readable file sizes.
 """
 
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote
 
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
-from qrdrop.core.filesystem import (
-    list_directory,
-    sort_entries,
-)
+from qrdrop.core.filesystem import FileEntry, list_directory, sort_entries
 from qrdrop.core.filetypes import get_file_icon
 from qrdrop.web.handlers._common import resolve_existing_target
 
@@ -72,6 +70,20 @@ def _get_sort_params(request: Request) -> tuple[str, str]:
     return sort_by, sort_order
 
 
+def _entry_row(entry: FileEntry, current_path: str) -> dict[str, Any]:
+    """Template data for one listing row."""
+    return {
+        "name": entry.name,
+        "path": f"{current_path}/{entry.name}" if current_path else entry.name,
+        "size_human": entry.size_human,
+        "size_bytes": entry.size_bytes,
+        "mtime": entry.mtime.strftime("%Y-%m-%d %H:%M"),
+        "is_dir": entry.is_dir,
+        "is_hidden": entry.is_hidden,
+        "icon": get_file_icon(entry),
+    }
+
+
 async def browse_handler(request: Request) -> Response:
     """Handle directory browsing requests.
 
@@ -83,9 +95,8 @@ async def browse_handler(request: Request) -> Response:
     Returns:
         Response: HTML response with directory listing.
     """
-    # Get path from URL parameter (empty string for root)
     path = request.path_params.get("path", "")
-    show_hidden = request.app.state.config.show_hidden
+    config = request.app.state.config
 
     target = resolve_existing_target(request)
     if isinstance(target, Response):
@@ -94,68 +105,35 @@ async def browse_handler(request: Request) -> Response:
     if not target.is_dir():
         return RedirectResponse(f"/view/{quote(path)}", status_code=302)
 
-    # List directory contents
     try:
-        entries = list_directory(target, show_hidden=show_hidden)
+        entries = list_directory(target, show_hidden=config.show_hidden)
     except (FileNotFoundError, NotADirectoryError, PermissionError):
         # The exception message embeds the absolute server-side path.
         return Response("Not found", status_code=404)
 
-    # Get sort parameters from query string
     sort_by, sort_order = _get_sort_params(request)
-
-    # Sort entries
     entries = sort_entries(entries, sort_by=sort_by, sort_order=sort_order)
 
-    # Build breadcrumbs
-    breadcrumbs = build_breadcrumbs(path)
-
-    # Calculate relative paths for links
-    current_path = path.strip("/") if path else ""
+    current_path = path.strip("/")
 
     # Title is the basename of the directory we're in; the template falls back
     # to the served root's name (site_name) at the top level.
     page_title = current_path.rsplit("/", 1)[-1] if current_path else ""
 
-    # Build entry data with paths and icons, counting dirs/files in one pass
-    entry_data = []
-    dir_count = 0
-    file_count = 0
-    for entry in entries:
-        entry_path = f"{current_path}/{entry.name}" if current_path else entry.name
+    dir_count = sum(1 for entry in entries if entry.is_dir)
 
-        if entry.is_dir:
-            dir_count += 1
-        else:
-            file_count += 1
-
-        entry_data.append(
-            {
-                "name": entry.name,
-                "path": entry_path,
-                "size_human": entry.size_human,
-                "size_bytes": entry.size_bytes,
-                "mtime": entry.mtime.strftime("%Y-%m-%d %H:%M"),
-                "is_dir": entry.is_dir,
-                "is_hidden": entry.is_hidden,
-                "icon": get_file_icon(entry),
-            }
-        )
-
-    # Render template
     templates = request.app.state.templates
-    config = request.app.state.config
     return templates.TemplateResponse(
         request,
         "browse.html",
         {
-            "entries": entry_data,
-            "breadcrumbs": breadcrumbs,
+            "entries": [_entry_row(entry, current_path) for entry in entries],
+            "breadcrumbs": build_breadcrumbs(path),
             "current_path": current_path,
             "page_title": page_title,
             "total_items": len(entries),
             "dir_count": dir_count,
-            "file_count": file_count,
+            "file_count": len(entries) - dir_count,
             "sort_by": sort_by,
             "sort_order": sort_order,
             "allow_upload": config.allow_upload,
