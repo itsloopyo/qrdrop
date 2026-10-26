@@ -176,7 +176,7 @@ def main() -> None:
 
     # In Docker the published port is fixed, so take the requested one as is.
     port = args.port if in_docker else find_available_port(args.port)
-    password = args.password if args.password else generate_password()
+    password = args.password or generate_password()
 
     # Full modify rights by default; --upload restricts to uploads only,
     # --readonly disables all writes.

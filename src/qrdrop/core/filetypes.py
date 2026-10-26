@@ -309,11 +309,8 @@ def is_text_file(mime_type: str | None, filename: str) -> bool:
     Returns:
         bool: True if the file is viewable as text.
     """
-    if mime_type:
-        if mime_type in VIEWABLE_TEXT_TYPES:
-            return True
-        if mime_type.startswith("text/"):
-            return True
+    if mime_type and (mime_type.startswith("text/") or mime_type in VIEWABLE_TEXT_TYPES):
+        return True
 
     # Check special filenames (Dockerfile, Makefile, etc.)
     if filename.lower() in _SPECIAL_FILENAME_MAP:
@@ -331,8 +328,6 @@ def is_image_file(mime_type: str | None) -> bool:
     Returns:
         bool: True if the file is a viewable image.
     """
-    if not mime_type:
-        return False
     return mime_type in VIEWABLE_IMAGE_TYPES
 
 
@@ -345,8 +340,6 @@ def is_inline_document(mime_type: str | None) -> bool:
     Returns:
         bool: True if the file can be displayed inline.
     """
-    if not mime_type:
-        return False
     return mime_type in INLINE_DOCUMENT_TYPES
 
 
