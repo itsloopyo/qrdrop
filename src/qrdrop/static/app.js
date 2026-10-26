@@ -1025,27 +1025,6 @@
                     checkAndUploadFiles(files);
                 }
             });
-
-            // Handle drag events on dropzone itself
-            var dropzone = document.getElementById('upload-dropzone');
-            if (dropzone) {
-                dropzone.addEventListener('dragover', function(event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                });
-
-                dropzone.addEventListener('drop', function(event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    dragCounter = 0;
-                    hideDropzone();
-
-                    var files = event.dataTransfer && event.dataTransfer.files;
-                    if (files && files.length > 0) {
-                        checkAndUploadFiles(files);
-                    }
-                });
-            }
         }
     }
 
