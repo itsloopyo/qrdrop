@@ -56,13 +56,14 @@ def _is_under_root_str(root_str: str, target_str: str) -> bool:
 
     Uses string-prefix comparison rather than `Path.relative_to` so the result
     is consistent across platforms (Windows uses both "/" and "\\" as separators
-    in resolved paths).
+    in resolved paths). A filesystem or drive root already ends in its
+    separator, so appending another would match nothing beneath it.
     """
-    return (
-        target_str == root_str
-        or target_str.startswith(root_str + "/")
-        or target_str.startswith(root_str + "\\")
-    )
+    if target_str == root_str:
+        return True
+    if root_str.endswith(("/", "\\")):
+        return target_str.startswith(root_str)
+    return target_str.startswith(root_str + "/") or target_str.startswith(root_str + "\\")
 
 
 @dataclass(slots=True)

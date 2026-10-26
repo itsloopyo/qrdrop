@@ -186,7 +186,8 @@ def _walk_real_files(target: Path) -> Iterator[tuple[Path, str]]:
     so by induction every yielded path is physically inside `target`. The
     caller relies on this invariant to skip per-file containment checks.
     """
-    base_len = len(str(target)) + 1  # +1 for trailing separator
+    # join adds the separator unless target already ends in one (a drive root).
+    base_len = len(os.path.join(str(target), ""))
     stack: list[str] = [str(target)]
     while stack:
         current = stack.pop()
@@ -238,7 +239,7 @@ def _collect_files(root: Path, paths: list[str]) -> list[tuple[Path, str]]:
             for abs_path, relative in _walk_real_files(target):
                 # Normalize Windows separators for portable archive paths
                 rel = relative.replace("\\", "/")
-                files.append((abs_path, f"{dir_name}/{rel}"))
+                files.append((abs_path, f"{dir_name}/{rel}" if dir_name else rel))
 
     return files
 

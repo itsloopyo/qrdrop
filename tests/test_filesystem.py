@@ -62,6 +62,12 @@ class TestValidatePath:
         sub.mkdir()
         assert validate_path(tmp_path, "sub") == sub.resolve()
 
+    def test_filesystem_root_serves_paths_beneath_it(self, tmp_path: Path) -> None:
+        # A filesystem or drive root already ends in its separator.
+        anchor = Path(tmp_path.resolve().anchor)
+        relative = tmp_path.resolve().relative_to(anchor).as_posix()
+        assert validate_path(anchor, relative) == tmp_path.resolve()
+
     def test_strips_leading_slash(self, tmp_path: Path) -> None:
         sub = tmp_path / "sub"
         sub.mkdir()

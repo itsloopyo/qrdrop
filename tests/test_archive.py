@@ -1,13 +1,17 @@
 """Tests for the batch archive download handler."""
 
 import io
+import itertools
 import json
+import os
 import tarfile
 import time
 import zipfile
 from pathlib import Path
 
 from starlette.testclient import TestClient
+
+from qrdrop.web.handlers.archive import _walk_real_files
 
 
 def _post_archive(client: TestClient, paths: list[str], format_type: str = "zip"):
@@ -144,3 +148,12 @@ class TestStreaming:
                 break
             time.sleep(0.05)
         assert not leftovers
+
+
+class TestFilesystemRootArchive:
+    def test_walk_from_drive_root_keeps_first_character(self, tmp_path: Path) -> None:
+        anchor = Path(tmp_path.resolve().anchor)
+        found = list(itertools.islice(_walk_real_files(anchor), 5))
+        assert found
+        for abs_path, relative in found:
+            assert str(abs_path) == os.path.join(str(anchor), relative)
