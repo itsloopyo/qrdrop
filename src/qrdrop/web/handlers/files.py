@@ -27,6 +27,7 @@ from qrdrop.web.handlers._common import (
     RequestValidationError,
     content_disposition,
     json_error,
+    named_entry,
     os_error_reason,
     resolve_existing_path,
     resolve_existing_target,
@@ -206,21 +207,23 @@ async def delete_handler(request: Request) -> Response:
         return json_error("Deletion not allowed", 403)
 
     root = config.root_dir
+    path = request.path_params.get("path", "")
 
     try:
-        target = resolve_existing_path(root, request.path_params.get("path", ""))
+        target = resolve_existing_path(root, path)
     except RequestValidationError as e:
         return json_error(e.message, e.status_code)
 
-    if target.resolve() == root.resolve():
+    if target == root.resolve():
         return json_error("Cannot delete root directory", 403)
 
+    entry = named_entry(root, path, target)
     try:
-        if target.is_dir():
+        if entry is target and target.is_dir():
             # A large tree takes seconds to remove; keep the event loop free.
             await asyncio.to_thread(shutil.rmtree, target)
         else:
-            target.unlink()
+            entry.unlink()
     except OSError as e:
         return json_error(f"Failed to delete: {os_error_reason(e)}", 500)
 

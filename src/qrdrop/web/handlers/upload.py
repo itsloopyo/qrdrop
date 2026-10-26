@@ -6,12 +6,12 @@ Handles file uploads via multipart form data with:
 - Overwrite prevention unless explicitly requested
 """
 
-import json
+import asyncio
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
-import aiofiles
 from starlette.datastructures import FormData, UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -20,13 +20,15 @@ from qrdrop.web.handlers._common import (
     RequestValidationError,
     json_error,
     os_error_reason,
+    read_json_object,
     sanitize_name,
     validate_target_directory,
     validation_error_response,
 )
 
-# Chunk size for streaming writes (128KB for better throughput)
-WRITE_CHUNK_SIZE = 131072
+# Chunk size for streaming writes (1MB: the copy runs in one worker thread,
+# so a larger buffer just means fewer read/write syscalls)
+WRITE_CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass
@@ -39,15 +41,35 @@ class UploadResult:
     size: int | None = None
     path: str | None = None
     exists: bool = False
+    status_code: int = 200
 
     def success_body(self) -> dict[str, Any]:
         return {"success": True, "filename": self.filename, "size": self.size, "path": self.path}
 
 
+def _copy_upload(source: BinaryIO, target_file: Path, mode: str) -> int:
+    """Copy `source` into `target_file` and return the number of bytes written.
+
+    A failure after the open removes the partial file. A failed open leaves
+    the path alone: whatever is there (a read-only file being overwritten, a
+    directory of the same name) is not ours.
+    """
+    f = open(target_file, mode)  # noqa: SIM115 - the cleanup below must not cover the open
+    try:
+        with f:
+            shutil.copyfileobj(source, f, WRITE_CHUNK_SIZE)
+            return f.tell()
+    except BaseException:
+        target_file.unlink(missing_ok=True)
+        raise
+
+
 async def _write_upload_file(
     upload_file: UploadFile, target_file: Path, root: Path, overwrite: bool
 ) -> UploadResult:
-    """Stream an uploaded file to disk.
+    """Write an uploaded file to disk.
+
+    The caller has already refused a symlink at `target_file`.
 
     Args:
         upload_file: The uploaded file object.
@@ -59,21 +81,12 @@ async def _write_upload_file(
         UploadResult with the outcome.
     """
     filename = target_file.name
-    bytes_written = 0
-
-    # A symlink here (even a dangling one, which exists() reports as absent)
-    # would make open() write through to the link target, escaping root.
-    if target_file.is_symlink():
-        return UploadResult(filename=filename, success=False, error="Target is a symlink")
 
     # "x" closes the check-then-write race for the no-overwrite case: open
     # fails atomically if the entry appeared (or is a symlink) in the meantime.
     mode = "wb" if overwrite else "xb"
     try:
-        async with aiofiles.open(target_file, mode) as f:
-            while chunk := await upload_file.read(WRITE_CHUNK_SIZE):
-                bytes_written += len(chunk)
-                await f.write(chunk)
+        bytes_written = await asyncio.to_thread(_copy_upload, upload_file.file, target_file, mode)
     except FileExistsError:
         # Lost the race against a concurrent creation; the existing file is
         # not ours to remove.
@@ -82,13 +95,14 @@ async def _write_upload_file(
             success=False,
             error=f"File '{filename}' already exists",
             exists=True,
+            status_code=409,
         )
     except OSError as e:
-        target_file.unlink(missing_ok=True)
         return UploadResult(
             filename=filename,
             success=False,
             error=f"Failed to write file: {os_error_reason(e)}",
+            status_code=500,
         )
 
     return UploadResult(
@@ -97,6 +111,38 @@ async def _write_upload_file(
         size=bytes_written,
         path=str(target_file.relative_to(root)),
     )
+
+
+async def _save_upload(
+    upload_file: UploadFile, target_dir: Path, root: Path, overwrite: bool
+) -> UploadResult:
+    """Validate the name and destination of one uploaded file, then write it."""
+    try:
+        filename = sanitize_name(upload_file.filename)
+    except RequestValidationError as e:
+        return UploadResult(
+            filename=upload_file.filename, success=False, error=e.message, status_code=400
+        )
+
+    target_file = target_dir / filename
+
+    # A symlink here (even a dangling one, which exists() reports as absent)
+    # would make open() write through to the link target, escaping root.
+    if target_file.is_symlink():
+        return UploadResult(
+            filename=filename, success=False, error="Cannot upload over a symlink", status_code=403
+        )
+
+    if not overwrite and target_file.exists():
+        return UploadResult(
+            filename=filename,
+            success=False,
+            error=f"File '{filename}' already exists",
+            exists=True,
+            status_code=409,
+        )
+
+    return await _write_upload_file(upload_file, target_file, root, overwrite)
 
 
 def _wants_overwrite(form: FormData) -> bool:
@@ -137,52 +183,16 @@ async def upload_handler(request: Request) -> Response:
     if not upload_file or not hasattr(upload_file, "filename"):
         return json_error("No file provided", 400)
 
-    try:
-        filename = sanitize_name(upload_file.filename)
-    except RequestValidationError as e:
-        return validation_error_response(e)
-
-    overwrite = _wants_overwrite(form)
-    target_file = target_dir / filename
-
-    if target_file.is_symlink():
-        return json_error("Cannot upload over a symlink", 403)
-
-    if target_file.exists() and not overwrite:
-        return json_error(f"File '{filename}' already exists", 409, exists=True)
-
-    result = await _write_upload_file(upload_file, target_file, root, overwrite)
+    result = await _save_upload(upload_file, target_dir, root, _wants_overwrite(form))
 
     if result.success:
         return JSONResponse(result.success_body())
 
-    return json_error(result.error, 409 if result.exists else 500, exists=result.exists)
+    return json_error(result.error, result.status_code, exists=result.exists)
 
 
-async def _upload_one(
-    upload_file: UploadFile, target_dir: Path, root: Path, overwrite: bool
-) -> dict[str, Any]:
-    """Upload one file of a multi-file request and describe the outcome."""
-    try:
-        filename = sanitize_name(upload_file.filename)
-    except RequestValidationError as e:
-        return {"filename": upload_file.filename, "success": False, "error": e.message}
-
-    target_file = target_dir / filename
-
-    if target_file.is_symlink():
-        return {"filename": filename, "success": False, "error": "Cannot upload over a symlink"}
-
-    if target_file.exists() and not overwrite:
-        return {
-            "filename": filename,
-            "success": False,
-            "error": "File already exists",
-            "exists": True,
-        }
-
-    result = await _write_upload_file(upload_file, target_file, root, overwrite)
-
+def _multi_entry(result: UploadResult) -> dict[str, Any]:
+    """Describe one file's outcome in a multi-file response."""
     if result.success:
         return result.success_body()
 
@@ -234,7 +244,7 @@ async def upload_multiple_handler(request: Request) -> Response:
 
     # Plain string fields under the file keys are not uploads; skip them.
     results = [
-        await _upload_one(upload_file, target_dir, root, overwrite)
+        _multi_entry(await _save_upload(upload_file, target_dir, root, overwrite))
         for upload_file in files
         if hasattr(upload_file, "filename")
     ]
@@ -273,18 +283,17 @@ async def check_upload_handler(request: Request) -> Response:
     root = config.root_dir
 
     try:
-        body = await request.json()
-    except json.JSONDecodeError:
-        return json_error("Invalid JSON body", 400)
+        body = await read_json_object(request)
+    except RequestValidationError as e:
+        return validation_error_response(e)
 
-    target_dir_path = body.get("path", "")
     filenames = body.get("filenames", [])
 
     if not isinstance(filenames, list):
         return json_error("filenames must be an array", 400)
 
     try:
-        target_dir = validate_target_directory(root, target_dir_path)
+        target_dir = validate_target_directory(root, body.get("path", ""))
     except RequestValidationError as e:
         return validation_error_response(e)
 

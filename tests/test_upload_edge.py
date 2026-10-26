@@ -38,14 +38,44 @@ class TestWriteFailure:
         self, temp_directory: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def boom(*_args, **_kwargs):
-            raise OSError("disk full")
+            raise OSError(28, "No space left on device")
 
-        monkeypatch.setattr(upload_module.aiofiles, "open", boom)
+        monkeypatch.setattr(upload_module.shutil, "copyfileobj", boom)
         client = _make_client(temp_directory)
         r = client.post("/upload", files={"file": ("doomed.txt", b"data")})
         assert r.status_code == 500
         assert r.json()["success"] is False
         assert not (temp_directory / "doomed.txt").exists()
+
+    def test_failed_open_keeps_existing_file(
+        self, temp_directory: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An overwrite whose open fails (e.g. a read-only file) must leave the
+        file that is already there."""
+
+        def denied(*_args, **_kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(upload_module, "open", denied, raising=False)
+        client = _make_client(temp_directory)
+        r = client.post(
+            "/upload",
+            files={"file": ("test.txt", b"new")},
+            data={"overwrite": "true"},
+        )
+        assert r.status_code == 500
+        assert (temp_directory / "test.txt").read_text() == "Hello, World!"
+
+    def test_overwrite_onto_directory_returns_500(self, temp_directory: Path) -> None:
+        client = _make_client(temp_directory)
+        r = client.post(
+            "/upload",
+            files={"file": ("subdir", b"data")},
+            data={"overwrite": "true"},
+        )
+        assert r.status_code == 500
+        assert r.json()["success"] is False
+        assert (temp_directory / "subdir").is_dir()
 
 
 class TestWritableGuard:

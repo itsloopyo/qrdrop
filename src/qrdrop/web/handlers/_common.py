@@ -1,5 +1,6 @@
 """Shared request helpers for file/directory handlers."""
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -42,13 +43,36 @@ def validation_error_response(
     return json_error(error.message, error.status_code)
 
 
+async def read_json_object(request: Request) -> dict:
+    """Parse the request body as a JSON object.
+
+    Raises:
+        RequestValidationError: If the body is not valid JSON or not an object.
+    """
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        raise RequestValidationError("Invalid JSON body", 400) from e
+
+    if not isinstance(body, dict):
+        raise RequestValidationError("Request body must be a JSON object", 400)
+    return body
+
+
+def _require_str_path(path: object) -> None:
+    """Reject a non-string path from a JSON body before it reaches validate_path."""
+    if not isinstance(path, str):
+        raise RequestValidationError("Path must be a string", 400)
+
+
 def resolve_existing_path(root: Path, path: str) -> Path:
     """Resolve `path` to an existing entry under root.
 
     Raises:
-        RequestValidationError: 403 if the path escapes root, 404 if nothing
-            exists there.
+        RequestValidationError: 400 if the path is not a string, 403 if it
+            escapes root, 404 if nothing exists there.
     """
+    _require_str_path(path)
     try:
         target = validate_path(root, path)
     except (PathTraversalError, SymlinkEscapeError) as e:
@@ -58,6 +82,16 @@ def resolve_existing_path(root: Path, path: str) -> Path:
         raise RequestValidationError("Not found", 404)
 
     return target
+
+
+def named_entry(root: Path, path: str, resolved: Path) -> Path:
+    """The entry the client named at `path`: the link itself if it is a symlink.
+
+    `resolved` (from :func:`resolve_existing_path`) is what the link points
+    at; deleting or renaming that instead would act on the link's target.
+    """
+    link = root / path.lstrip("/")
+    return link if link.is_symlink() else resolved
 
 
 def resolve_existing_target(request: Request) -> Path | Response:
@@ -80,9 +114,11 @@ def validate_target_directory(root: Path, target_dir_path: str) -> Path:
     """Validate that `target_dir_path` resolves to a writable directory under root.
 
     Raises:
-        RequestValidationError: If the path escapes root, is not a directory,
-            or is not writable. Carries the appropriate HTTP status.
+        RequestValidationError: If the path is not a string, escapes root, is
+            not a directory, or is not writable. Carries the appropriate HTTP
+            status.
     """
+    _require_str_path(target_dir_path)
     try:
         target_dir = validate_path(root, target_dir_path)
     except (PathTraversalError, SymlinkEscapeError) as e:
@@ -97,7 +133,7 @@ def validate_target_directory(root: Path, target_dir_path: str) -> Path:
     return target_dir
 
 
-def sanitize_name(name: str | None) -> str:
+def sanitize_name(name: object) -> str:
     """Reduce `name` to a safe basename for a file or directory.
 
     Raises:
@@ -106,6 +142,8 @@ def sanitize_name(name: str | None) -> str:
     """
     if not name:
         raise RequestValidationError("No name provided", 400)
+    if not isinstance(name, str):
+        raise RequestValidationError("Invalid name", 400)
 
     # Only take the basename to prevent path injection
     safe_name = Path(name).name

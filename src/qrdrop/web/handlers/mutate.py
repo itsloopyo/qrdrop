@@ -8,7 +8,6 @@ Both operations require the ``allow_modify`` permission and validate all
 paths through the shared filesystem security boundary.
 """
 
-import json
 import os
 
 from starlette.requests import Request
@@ -17,28 +16,14 @@ from starlette.responses import JSONResponse, Response
 from qrdrop.web.handlers._common import (
     RequestValidationError,
     json_error,
+    named_entry,
     os_error_reason,
+    read_json_object,
     resolve_existing_path,
     sanitize_name,
     validate_target_directory,
     validation_error_response,
 )
-
-
-async def _read_json_body(request: Request) -> dict:
-    """Parse the request body as a JSON object.
-
-    Raises:
-        RequestValidationError: If the body is not valid JSON or not an object.
-    """
-    try:
-        body = await request.json()
-    except json.JSONDecodeError as e:
-        raise RequestValidationError("Invalid JSON body", 400) from e
-
-    if not isinstance(body, dict):
-        raise RequestValidationError("Request body must be a JSON object", 400)
-    return body
 
 
 async def mkdir_handler(request: Request) -> Response:
@@ -61,7 +46,7 @@ async def mkdir_handler(request: Request) -> Response:
     root = config.root_dir
 
     try:
-        body = await _read_json_body(request)
+        body = await read_json_object(request)
         target_dir = validate_target_directory(root, body.get("path", ""))
         name = sanitize_name(body.get("name"))
     except RequestValidationError as e:
@@ -101,13 +86,16 @@ async def rename_handler(request: Request) -> Response:
     root = config.root_dir
 
     try:
-        body = await _read_json_body(request)
-        source = resolve_existing_path(root, body.get("path", ""))
+        body = await read_json_object(request)
+        path = body.get("path", "")
+        resolved = resolve_existing_path(root, path)
     except RequestValidationError as e:
         return validation_error_response(e)
 
-    if source.resolve() == root.resolve():
+    if resolved == root.resolve():
         return json_error("Cannot rename root directory", 403)
+
+    source = named_entry(root, path, resolved)
 
     try:
         new_name = sanitize_name(body.get("new_name"))
@@ -123,10 +111,10 @@ async def rename_handler(request: Request) -> Response:
 
     target = parent / new_name
 
-    # On case-insensitive filesystems a case-only rename makes target.exists()
-    # report the source itself; samefile() distinguishes that from a real
-    # collision with another entry.
-    if target.exists() and not target.samefile(source):
+    # On case-insensitive filesystems a case-only rename finds the source
+    # itself at `target`; comparing lstat()s tells that apart from a real
+    # collision, without following a symlink onto the entry it points at.
+    if os.path.lexists(target) and not os.path.samestat(target.lstat(), source.lstat()):
         return json_error(f"'{new_name}' already exists", 409, exists=True)
 
     try:

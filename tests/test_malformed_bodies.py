@@ -1,9 +1,4 @@
-"""Characterization of request bodies with the wrong JSON shape.
-
-These lock in current behaviour: each case below reaches an unhandled
-exception inside the handler and comes back as a 500. They are recorded so
-any change to that outcome is a deliberate one.
-"""
+"""Request bodies with the wrong JSON shape are refused with a 400."""
 
 from pathlib import Path
 
@@ -31,27 +26,27 @@ def client(temp_directory: Path) -> TestClient:
     return client
 
 
-def test_upload_check_with_array_body_is_500(client: TestClient) -> None:
-    assert client.post("/upload-check", json=[]).status_code == 500
+def test_upload_check_with_array_body_is_400(client: TestClient) -> None:
+    assert client.post("/upload-check", json=[]).status_code == 400
 
 
-def test_upload_check_with_non_string_path_is_500(client: TestClient) -> None:
+def test_upload_check_with_non_string_path_is_400(client: TestClient) -> None:
     response = client.post("/upload-check", json={"path": 5, "filenames": []})
-    assert response.status_code == 500
+    assert response.status_code == 400
 
 
-def test_mkdir_with_non_string_path_is_500(client: TestClient) -> None:
-    assert client.post("/mkdir", json={"path": 5, "name": "x"}).status_code == 500
+def test_mkdir_with_non_string_path_is_400(client: TestClient) -> None:
+    assert client.post("/mkdir", json={"path": 5, "name": "x"}).status_code == 400
 
 
-def test_rename_with_non_string_path_is_500(client: TestClient) -> None:
-    assert client.post("/rename", json={"path": 5, "new_name": "x"}).status_code == 500
+def test_rename_with_non_string_path_is_400(client: TestClient) -> None:
+    assert client.post("/rename", json={"path": 5, "new_name": "x"}).status_code == 400
 
 
-def test_mkdir_with_non_string_name_is_500(client: TestClient) -> None:
-    assert client.post("/mkdir", json={"path": "", "name": 5}).status_code == 500
+def test_mkdir_with_non_string_name_is_400(client: TestClient) -> None:
+    assert client.post("/mkdir", json={"path": "", "name": 5}).status_code == 400
 
 
-def test_archive_with_non_string_path_is_500(client: TestClient) -> None:
+def test_archive_with_non_string_path_is_400(client: TestClient) -> None:
     response = client.post("/download-archive", data={"paths": "[5]", "format": "zip"})
-    assert response.status_code == 500
+    assert response.status_code == 400

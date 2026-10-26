@@ -210,3 +210,31 @@ class TestRenameHandler:
         # Only the basename is used, so the file stays inside root
         assert (temp_directory / "escaped.txt").exists()
         assert not (temp_directory.parent / "escaped.txt").exists()
+
+
+class TestRenameSymlink:
+    @pytest.fixture
+    def link(self, temp_directory: Path) -> Path:
+        link = temp_directory / "link.txt"
+        try:
+            link.symlink_to(temp_directory / "test.txt")
+        except OSError:
+            pytest.skip("symlink creation not supported in this environment")
+        return link
+
+    @pytest.mark.usefixtures("link")
+    def test_renaming_a_link_moves_the_link(
+        self, modify_client: TestClient, temp_directory: Path
+    ) -> None:
+        r = modify_client.post("/rename", json={"path": "link.txt", "new_name": "moved.txt"})
+        assert r.status_code == 200
+        assert (temp_directory / "moved.txt").is_symlink()
+        assert (temp_directory / "test.txt").read_text() == "Hello, World!"
+
+    def test_renaming_a_link_onto_its_target_is_a_conflict(
+        self, modify_client: TestClient, temp_directory: Path, link: Path
+    ) -> None:
+        r = modify_client.post("/rename", json={"path": "link.txt", "new_name": "test.txt"})
+        assert r.status_code == 409
+        assert not (temp_directory / "test.txt").is_symlink()
+        assert link.is_symlink()

@@ -84,6 +84,11 @@ class TestArchiveHandler:
         r = _post_archive(authenticated_client, ["test.txt", "readme.md"], "zip")
         assert "archive_" in r.headers.get("content-disposition", "")
 
+    def test_archive_filename_for_root(self, authenticated_client: TestClient) -> None:
+        r = _post_archive(authenticated_client, [""], "zip")
+        assert r.status_code == 200
+        assert 'filename="archive_' in r.headers.get("content-disposition", "")
+
 
 class TestStreaming:
     def test_no_content_length_and_large_round_trip(

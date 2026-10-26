@@ -136,11 +136,27 @@ async def _stream_archive(
                 item = await asyncio.to_thread(chunk_queue.get, True, _POLL_INTERVAL_SECONDS)
             except queue.Empty:
                 continue
+            # The writer emits many small pieces (entry headers, compressor
+            # output); hand everything already queued to one send instead of
+            # paying a thread hop and a socket write for each. Capped at one
+            # queue's worth so a fast writer cannot grow a batch without bound.
+            batch: list[bytes] = []
+            while isinstance(item, bytes):
+                batch.append(item)
+                if len(batch) == _QUEUE_MAX_CHUNKS:
+                    item = b""
+                    break
+                try:
+                    item = chunk_queue.get_nowait()
+                except queue.Empty:
+                    item = b""
+                    break
+            if batch:
+                yield b"".join(batch)
             if item is None:
                 return
             if isinstance(item, Exception):
                 raise item
-            yield item
     finally:
         cancelled.set()
 
@@ -155,8 +171,9 @@ def _generate_archive_name(paths: list[str], format_type: str) -> str:
     Returns:
         str: A suitable filename for the archive.
     """
-    if len(paths) == 1:
-        return f"{Path(paths[0]).name}.{format_type}"
+    # The served root itself ("" or "/") has no basename to name it by.
+    if len(paths) == 1 and (name := Path(paths[0]).name):
+        return f"{name}.{format_type}"
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"archive_{timestamp}.{format_type}"
@@ -260,6 +277,9 @@ async def archive_handler(request: Request) -> Response:
 
     if not isinstance(paths, list) or len(paths) == 0:
         return Response("No paths provided", status_code=400)
+
+    if not all(isinstance(p, str) for p in paths):
+        return Response("Paths must be strings", status_code=400)
 
     # Validate all paths before streaming the archive
     # Run in thread pool to avoid blocking the event loop during directory scanning

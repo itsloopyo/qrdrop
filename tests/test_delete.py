@@ -77,3 +77,18 @@ class TestDelete:
         body = r.json()
         assert body["success"] is False
         assert "permission denied" in body["error"]
+
+
+class TestDeleteSymlink:
+    def test_deleting_a_link_keeps_its_target(self, temp_directory: Path) -> None:
+        link = temp_directory / "link"
+        try:
+            link.symlink_to(temp_directory / "subdir", target_is_directory=True)
+        except OSError:
+            pytest.skip("symlink creation not supported in this environment")
+
+        client = _make_client(temp_directory, allow_delete=True)
+        r = client.delete("/delete/link")
+        assert r.status_code == 200
+        assert not link.is_symlink()
+        assert (temp_directory / "subdir" / "nested.txt").exists()
