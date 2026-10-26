@@ -6,24 +6,10 @@ This is intentional for a temporary file-sharing tool.
 
 import secrets
 import time
-from dataclasses import dataclass
 
-
-@dataclass(slots=True)
-class SessionData:
-    """Represents an authenticated session.
-
-    Stores timestamps as epoch floats for fast comparison. Sessions that
-    never expire use float("inf") so validation and cleanup need no
-    special-casing.
-    """
-
-    token: str
-    created_at: float
-    expires_at: float
-
-
-_sessions: dict[str, SessionData] = {}
+# token -> expiry as an epoch float. Sessions that never expire use
+# float("inf") so validation and cleanup need no special-casing.
+_sessions: dict[str, float] = {}
 
 # Sweep expired sessions at most this often, regardless of traffic.
 _CLEANUP_INTERVAL_SECONDS = 60.0
@@ -43,11 +29,8 @@ def create_session(timeout_seconds: int | None = None) -> str:
         str: A URL-safe base64-encoded token (32 bytes of entropy).
     """
     token = secrets.token_urlsafe(32)
-    now = time.time()
-    _sessions[token] = SessionData(
-        token=token,
-        created_at=now,
-        expires_at=now + timeout_seconds if timeout_seconds is not None else float("inf"),
+    _sessions[token] = (
+        time.time() + timeout_seconds if timeout_seconds is not None else float("inf")
     )
     return token
 
@@ -74,12 +57,12 @@ def validate_session(token: str) -> bool:
     Returns:
         bool: True if the session is valid and not expired, False otherwise.
     """
-    session = _sessions.get(token)
-    if session is None:
+    expires_at = _sessions.get(token)
+    if expires_at is None:
         return False
 
     now = time.time()
-    if now > session.expires_at:
+    if now > expires_at:
         # pop() tolerates concurrent validations racing on the same token.
         _sessions.pop(token, None)
         return False
@@ -104,7 +87,7 @@ def cleanup_expired_sessions() -> int:
         int: The number of sessions that were removed.
     """
     now = time.time()
-    expired_tokens = [token for token, session in _sessions.items() if now > session.expires_at]
+    expired_tokens = [token for token, expires_at in _sessions.items() if now > expires_at]
     for token in expired_tokens:
         del _sessions[token]
     return len(expired_tokens)

@@ -38,11 +38,11 @@ class TestCreateSession:
 
     def test_expiry_in_future(self) -> None:
         token = create_session(60)
-        assert session_mod._sessions[token].expires_at > time.time()
+        assert session_mod._sessions[token] > time.time()
 
     def test_default_never_expires(self) -> None:
         token = create_session()
-        assert session_mod._sessions[token].expires_at == float("inf")
+        assert session_mod._sessions[token] == float("inf")
         assert validate_session(token) is True
 
 
