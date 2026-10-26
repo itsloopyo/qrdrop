@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
-from typing import NamedTuple
 
 
 class PathTraversalError(Exception):
@@ -34,19 +33,6 @@ _SIZE_UNITS: tuple[tuple[str, int], ...] = (
 # validate_path call.
 _root_cache: dict[str, tuple[Path, str]] = {}
 _root_cache_lock = Lock()
-
-
-class _CacheEntry(NamedTuple):
-    """Cache entry for directory listings."""
-
-    mtime: float
-    entries: tuple  # Immutable tuple of FileEntry
-
-
-# LRU cache for directory listings
-_dir_cache: dict[tuple[str, bool], _CacheEntry] = {}
-_dir_cache_lock = Lock()
-_DIR_CACHE_MAX_SIZE = 256
 
 
 def _get_resolved_root_cached(root: Path) -> tuple[Path, str]:
@@ -141,59 +127,12 @@ def validate_path(root: Path, requested: str) -> Path:
     return resolved
 
 
-def _list_directory_uncached(path: Path, show_hidden: bool) -> list[FileEntry]:
-    """Internal uncached directory listing.
-
-    Args:
-        path: The directory path to list.
-        show_hidden: Whether to include files starting with '.'.
-
-    Returns:
-        list[FileEntry]: List of file entries in the directory.
-    """
-    entries: list[FileEntry] = []
-    fromtimestamp = datetime.fromtimestamp
-    is_dir_check = stat.S_ISDIR
-
-    with os.scandir(path) as it:
-        for entry_de in it:
-            name = entry_de.name
-            is_hidden = name.startswith(".")
-
-            # Skip hidden files if not showing them
-            if is_hidden and not show_hidden:
-                continue
-
-            try:
-                # DirEntry.stat() follows symlinks by default, matching prior behavior.
-                # On Windows, stat info is populated from the directory enumeration
-                # for non-symlinks, avoiding a per-file syscall.
-                stat_info = entry_de.stat()
-                is_dir = is_dir_check(stat_info.st_mode)
-                size = 0 if is_dir else stat_info.st_size
-
-                entries.append(
-                    FileEntry(
-                        name=name,
-                        size_bytes=size,
-                        size_human=humanize_size(size),
-                        mtime=fromtimestamp(stat_info.st_mtime, tz=UTC),
-                        is_dir=is_dir,
-                        is_hidden=is_hidden,
-                    )
-                )
-            except OSError:
-                # Skip files we can't stat (permission errors, etc.)
-                continue
-
-    return entries
-
-
 def list_directory(path: Path, show_hidden: bool = True) -> list[FileEntry]:
-    """List contents of a directory with caching.
+    """List contents of a directory.
 
-    Uses an LRU cache with mtime-based invalidation for performance.
-    Cache entries are invalidated when directory mtime changes.
+    Not cached: a directory's mtime only changes when entries are added or
+    removed, so a listing keyed on it would keep showing the old size and
+    mtime of a file that was overwritten or appended to.
 
     Args:
         path: The directory path to list.
@@ -206,38 +145,42 @@ def list_directory(path: Path, show_hidden: bool = True) -> list[FileEntry]:
         NotADirectoryError: If path is not a directory.
         FileNotFoundError: If path does not exist.
     """
-    if not path.exists():
-        raise FileNotFoundError(f"Directory not found: {path}")
-
-    if not path.is_dir():
+    if not stat.S_ISDIR(path.stat().st_mode):
         raise NotADirectoryError(f"Not a directory: {path}")
 
-    # Get directory mtime for cache validation
-    try:
-        dir_mtime = path.stat().st_mtime
-    except OSError:
-        # Can't stat - skip cache
-        return _list_directory_uncached(path, show_hidden)
+    entries: list[FileEntry] = []
+    fromtimestamp = datetime.fromtimestamp
+    is_dir_check = stat.S_ISDIR
 
-    cache_key = (str(path), show_hidden)
+    with os.scandir(path) as it:
+        for entry_de in it:
+            name = entry_de.name
+            is_hidden = name.startswith(".")
 
-    cached = _dir_cache.get(cache_key)
-    if cached is not None and cached.mtime == dir_mtime:
-        return list(cached.entries)
+            if is_hidden and not show_hidden:
+                continue
 
-    entries = _list_directory_uncached(path, show_hidden)
+            try:
+                # DirEntry.stat() follows symlinks by default, matching prior behavior.
+                # On Windows, stat info is populated from the directory enumeration
+                # for non-symlinks, avoiding a per-file syscall.
+                stat_info = entry_de.stat()
+            except OSError:
+                # Skip files we can't stat (permission errors, dangling links)
+                continue
 
-    # Update cache with lock
-    with _dir_cache_lock:
-        # Evict oldest entries if cache is full
-        if len(_dir_cache) >= _DIR_CACHE_MAX_SIZE:
-            # Remove 25% of entries (simple LRU approximation)
-            keys_to_remove = list(_dir_cache.keys())[: _DIR_CACHE_MAX_SIZE // 4]
-            for key in keys_to_remove:
-                del _dir_cache[key]
-
-        # Store as tuple for immutability
-        _dir_cache[cache_key] = _CacheEntry(mtime=dir_mtime, entries=tuple(entries))
+            is_dir = is_dir_check(stat_info.st_mode)
+            size = 0 if is_dir else stat_info.st_size
+            entries.append(
+                FileEntry(
+                    name=name,
+                    size_bytes=size,
+                    size_human=humanize_size(size),
+                    mtime=fromtimestamp(stat_info.st_mtime, tz=UTC),
+                    is_dir=is_dir,
+                    is_hidden=is_hidden,
+                )
+            )
 
     return entries
 

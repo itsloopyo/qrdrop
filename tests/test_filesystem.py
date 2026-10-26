@@ -1,13 +1,11 @@
 """Tests for core filesystem operations: validation, listing, sorting, sizing."""
 
 import os
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from qrdrop.core import filesystem
 from qrdrop.core.filesystem import (
     FileEntry,
     PathTraversalError,
@@ -16,11 +14,6 @@ from qrdrop.core.filesystem import (
     sort_entries,
     validate_path,
 )
-
-
-@pytest.fixture(autouse=True)
-def _clear_dir_cache() -> None:
-    filesystem._dir_cache.clear()
 
 
 class TestHumanizeSize:
@@ -143,21 +136,21 @@ class TestListDirectory:
         with pytest.raises(NotADirectoryError):
             list_directory(f)
 
-    def test_cache_returns_consistent_results(self, tmp_path: Path) -> None:
-        (tmp_path / "a.txt").write_text("a")
-        a = list_directory(tmp_path)
-        b = list_directory(tmp_path)
-        assert [e.name for e in a] == [e.name for e in b]
-
-    def test_cache_invalidated_when_dir_mtime_changes(self, tmp_path: Path) -> None:
+    def test_new_entry_is_listed(self, tmp_path: Path) -> None:
         list_directory(tmp_path)
-        # Wait so mtime advances reliably
-        time.sleep(0.05)
         (tmp_path / "new.txt").write_text("new")
-        # Force mtime update (Windows sometimes lags)
-        os.utime(tmp_path, None)
         entries = list_directory(tmp_path)
         assert any(e.name == "new.txt" for e in entries)
+
+    def test_rewritten_file_reports_new_size(self, tmp_path: Path) -> None:
+        """Rewriting a file leaves the directory mtime alone; the listing must
+        still show the new size."""
+        f = tmp_path / "f.txt"
+        f.write_text("a")
+        list_directory(tmp_path)
+        f.write_text("longer content")
+        entries = {e.name: e for e in list_directory(tmp_path)}
+        assert entries["f.txt"].size_bytes == len("longer content")
 
 
 class TestSortEntriesEdgeCases:
