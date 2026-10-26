@@ -5,7 +5,11 @@ from starlette.responses import RedirectResponse, Response
 
 from qrdrop.core.password import validate_password
 from qrdrop.core.session import create_session, delete_session
-from qrdrop.web.middleware import SESSION_COOKIE_NAME, throttle_failed_login
+from qrdrop.web.middleware import (
+    SESSION_COOKIE_NAME,
+    set_session_cookie,
+    throttle_failed_login,
+)
 
 
 def _safe_next_path(candidate: str | None) -> str:
@@ -31,6 +35,17 @@ def _safe_next_path(candidate: str | None) -> str:
     return candidate
 
 
+def _render_login(
+    request: Request, next_path: str, error: str | None = None, status_code: int = 200
+) -> Response:
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "login.html",
+        {"error": error, "next": next_path},
+        status_code=status_code,
+    )
+
+
 async def login_page_handler(request: Request) -> Response:
     """Render the login page.
 
@@ -40,21 +55,10 @@ async def login_page_handler(request: Request) -> Response:
     Returns:
         Response: HTML response with the login form.
     """
-    templates = request.app.state.templates
-
-    next_path = _safe_next_path(request.query_params.get("next"))
-
     # Error messages are only ever rendered by the POST handler; reflecting an
     # ?error= query parameter would let a crafted link inject arbitrary text
     # into the trusted login card.
-    return templates.TemplateResponse(
-        request,
-        "login.html",
-        {
-            "error": None,
-            "next": next_path,
-        },
-    )
+    return _render_login(request, _safe_next_path(request.query_params.get("next")))
 
 
 async def login_submit_handler(request: Request) -> Response:
@@ -69,46 +73,18 @@ async def login_submit_handler(request: Request) -> Response:
     Returns:
         Response: Redirect to home on success, back to login with error on failure.
     """
-    # Get form data
     form = await request.form()
     submitted_password = form.get("password", "")
     next_path = _safe_next_path(str(form.get("next", "/")))
-
-    # Get expected password from config
     config = request.app.state.config
-    expected_password = config.password
 
-    # Validate using timing-safe comparison
-    if validate_password(str(submitted_password), expected_password):
-        # Success - create session
-        token = create_session(config.session_timeout)
-
-        # Redirect to requested path (already validated as safe).
+    if validate_password(str(submitted_password), config.password):
         response = RedirectResponse(next_path, status_code=302)
-
-        response.set_cookie(
-            SESSION_COOKIE_NAME,
-            token,
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
-
+        set_session_cookie(response, create_session(config.session_timeout))
         return response
 
-    # Failure - throttle, then re-render the login form with an error
     await throttle_failed_login()
-
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "login.html",
-        {
-            "error": "Invalid password",
-            "next": next_path,
-        },
-        status_code=401,
-    )
+    return _render_login(request, next_path, error="Invalid password", status_code=401)
 
 
 async def logout_handler(request: Request) -> Response:
