@@ -327,6 +327,37 @@
         form.remove();
     }
 
+    // Run a JSON file action; on success call onSuccess, otherwise toast the
+    // server's error (or the network failure) after failurePrefix.
+    function runFileAction(url, options, failurePrefix, onSuccess) {
+        fetch(url, options)
+        .then(function(response) {
+            return response.json().then(function(data) {
+                return { ok: response.ok, data: data };
+            });
+        })
+        .then(function(result) {
+            if (result.ok && result.data.success) {
+                onSuccess();
+            } else {
+                toast(failurePrefix + (result.data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(function(error) {
+            toast(failurePrefix + error.message, 'error');
+        });
+    }
+
+    function postJson(body) {
+        return {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        };
+    }
+
     // Delete a file or directory
     function deleteItem(path, name) {
         appConfirm('"' + name + '" will be permanently deleted. This action cannot be undone.', {
@@ -336,30 +367,15 @@
         }).then(function(ok) {
             if (!ok) return;
 
-            fetch('/delete/' + encodeURIComponent(path), {
-                method: 'DELETE',
-            })
-            .then(function(response) {
-                return response.json().then(function(data) {
-                    return { ok: response.ok, data: data };
-                });
-            })
-            .then(function(result) {
-                if (result.ok && result.data.success) {
-                    var row = document.querySelector('.file-row[data-path="' + CSS.escape(path) + '"]');
-                    if (row) {
-                        row.remove();
-                    }
-                    selectedPaths.delete(path);
-                    saveSelections();
-                    updateSelectionUI();
-                    toast('Deleted ' + name, 'success');
-                } else {
-                    toast('Could not delete: ' + (result.data.error || 'Unknown error'), 'error');
+            runFileAction('/delete/' + encodeURIComponent(path), { method: 'DELETE' }, 'Could not delete: ', function() {
+                var row = document.querySelector('.file-row[data-path="' + CSS.escape(path) + '"]');
+                if (row) {
+                    row.remove();
                 }
-            })
-            .catch(function(error) {
-                toast('Could not delete: ' + error.message, 'error');
+                selectedPaths.delete(path);
+                saveSelections();
+                updateSelectionUI();
+                toast('Deleted ' + name, 'success');
             });
         });
     }
@@ -390,31 +406,8 @@
                 return;
             }
 
-            fetch('/mkdir', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    path: getCurrentPath(),
-                    name: name,
-                }),
-            })
-            .then(function(response) {
-                return response.json().then(function(data) {
-                    return { ok: response.ok, data: data };
-                });
-            })
-            .then(function(result) {
-                if (result.ok && result.data.success) {
-                    // Refresh to show the new folder
-                    window.location.reload();
-                } else {
-                    toast('Could not create folder: ' + (result.data.error || 'Unknown error'), 'error');
-                }
-            })
-            .catch(function(error) {
-                toast('Could not create folder: ' + error.message, 'error');
+            runFileAction('/mkdir', postJson({ path: getCurrentPath(), name: name }), 'Could not create folder: ', function() {
+                window.location.reload();
             });
         });
     }
@@ -434,31 +427,8 @@
                 return;
             }
 
-            fetch('/rename', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    path: path,
-                    new_name: newName,
-                }),
-            })
-            .then(function(response) {
-                return response.json().then(function(data) {
-                    return { ok: response.ok, data: data };
-                });
-            })
-            .then(function(result) {
-                if (result.ok && result.data.success) {
-                    // Refresh to show the renamed entry
-                    window.location.reload();
-                } else {
-                    toast('Could not rename: ' + (result.data.error || 'Unknown error'), 'error');
-                }
-            })
-            .catch(function(error) {
-                toast('Could not rename: ' + error.message, 'error');
+            runFileAction('/rename', postJson({ path: path, new_name: newName }), 'Could not rename: ', function() {
+                window.location.reload();
             });
         });
     }
@@ -861,16 +831,7 @@
         var filenames = pendingFiles.map(function(f) { return f.name; });
 
         // Check if files exist
-        fetch('/upload-check', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                path: currentPath,
-                filenames: filenames,
-            }),
-        })
+        fetch('/upload-check', postJson({ path: currentPath, filenames: filenames }))
         .then(function(response) {
             return response.json().then(function(data) {
                 if (!response.ok || !data.success) {
