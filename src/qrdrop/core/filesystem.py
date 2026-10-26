@@ -16,13 +16,9 @@ from typing import NamedTuple
 class PathTraversalError(Exception):
     """Raised when a path attempts to escape the root directory."""
 
-    pass
-
 
 class SymlinkEscapeError(Exception):
     """Raised when a symlink resolves to a location outside root."""
-
-    pass
 
 
 # Size units tuple - module-level to avoid recreation on each call
