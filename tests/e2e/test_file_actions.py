@@ -109,3 +109,18 @@ class TestRename:
         expect(page_on.locator(".toast-error")).to_have_text(
             "Could not rename: 'two.txt' already exists"
         )
+
+
+class TestUploadCheck:
+    def test_existing_file_prompts_then_overwrites(
+        self, page_on: Page, modify_server: ServerInfo, tmp_path: Path
+    ):
+        (modify_server.root_dir / "clash.txt").write_text("old")
+        page_on.reload()
+        upload = tmp_path / "clash.txt"
+        upload.write_text("new")
+        page_on.set_input_files("#upload-input", str(upload))
+        expect(page_on.locator("#overwrite-file-list")).to_have_text("clash.txt")
+        page_on.click("#overwrite-confirm-btn")
+        expect(page_on.locator(".upload-file-success")).to_have_count(1)
+        assert (modify_server.root_dir / "clash.txt").read_text() == "new"
