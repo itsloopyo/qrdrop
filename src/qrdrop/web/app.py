@@ -26,13 +26,9 @@ class AppConfig:
     allow_modify: bool = False
 
 
-# Get package directory for templates and static files
 PACKAGE_DIR = Path(__file__).parent.parent  # src/qrdrop/
 TEMPLATES_DIR = PACKAGE_DIR / "templates"
 STATIC_DIR = PACKAGE_DIR / "static"
-
-# Initialize Jinja2 templates
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def create_app(config: AppConfig) -> ASGIApp:
@@ -44,8 +40,10 @@ def create_app(config: AppConfig) -> ASGIApp:
     Returns:
         ASGIApp: The configured ASGI application wrapped with authentication.
     """
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.globals["site_name"] = config.root_dir.name or str(config.root_dir)
+
     app = Starlette(routes=get_routes(STATIC_DIR))
     app.state.config = config
     app.state.templates = templates
-    templates.env.globals["site_name"] = config.root_dir.name or str(config.root_dir)
     return AuthMiddleware(app)
