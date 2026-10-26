@@ -22,7 +22,7 @@ FROM python:3.13-alpine
 LABEL org.opencontainers.image.title="qrdrop" \
       org.opencontainers.image.description="Instant file sharing from your terminal" \
       org.opencontainers.image.source="https://github.com/itsloopyo/qrdrop" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT AND BSD-3-Clause"
 
 RUN addgroup -g 1000 qrdrop && \
     adduser -u 1000 -G qrdrop -s /sbin/nologin -D qrdrop && \

@@ -66,4 +66,4 @@ QRDrop allows **full access by default** (uploads, deletions, and renames). Rest
 
 ## License
 
-MIT
+MIT. The image bundles [highlight.js](https://highlightjs.org/) 11.9.0 under the BSD 3-Clause License (Copyright (c) 2006, Ivan Sagalaev); its license text ships inside the package at `qrdrop/static/vendor/highlight/LICENSE`.

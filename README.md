@@ -164,4 +164,6 @@ QRDrop is built on Starlette, Uvicorn, Jinja2, and aiofiles.
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE).
+
+The web UI bundles [highlight.js](https://highlightjs.org/) 11.9.0 for syntax highlighting, under the BSD 3-Clause License (Copyright (c) 2006, Ivan Sagalaev). Its license text ships at [`src/qrdrop/static/vendor/highlight/LICENSE`](src/qrdrop/static/vendor/highlight/LICENSE).
