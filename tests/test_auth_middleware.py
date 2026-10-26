@@ -1,11 +1,12 @@
 """Tests for authentication middleware, including QR code auto-login."""
 
+import asyncio
 import time
 
 import pytest
 from starlette.testclient import TestClient
 
-from qrdrop.web.app import AppConfig
+from qrdrop.web.app import AppConfig, create_app
 
 
 class TestAuthMiddleware:
@@ -148,6 +149,34 @@ class TestQrCodeAutoLogin:
         assert response.status_code == 302
         assert "/login" in response.headers["location"]
 
+    def test_non_utf8_query_string_redirects_to_login(self, app_config: AppConfig) -> None:
+        """Raw non-UTF-8 query bytes (which h11 accepts) must not crash the
+        middleware. Driven through ASGI directly: httpx refuses to send them."""
+        sent: list[dict] = []
+
+        async def receive() -> dict:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: dict) -> None:
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/",
+            "raw_path": b"/",
+            "root_path": "",
+            "query_string": b"auth=" + bytes([0xFF, 0xFE]),
+            "headers": [],
+            "server": ("testserver", 80),
+        }
+        asyncio.run(create_app(app_config)(scope, receive, send))
+
+        assert sent[0]["status"] == 302
+        assert (b"location", b"/login") in sent[0]["headers"]
+
 
 class TestSessionManagement:
     """Tests for session management in middleware."""
@@ -192,7 +221,6 @@ class TestSessionManagement:
 class TestEncodedAuthParam:
     def test_percent_encoded_password_round_trips(self, tmp_path) -> None:
         """The QR URL percent-encodes the password; the middleware must decode it."""
-        from qrdrop.web.app import create_app
 
         config = AppConfig(
             root_dir=tmp_path,

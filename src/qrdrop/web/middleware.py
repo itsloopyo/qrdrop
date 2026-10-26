@@ -86,7 +86,9 @@ class AuthMiddleware:
             return
 
         # Check for auto-login via URL parameter (for QR code convenience)
-        query_string = scope.get("query_string", b"").decode("utf-8")
+        # latin-1 as Starlette does: raw non-UTF-8 bytes in the query (which
+        # h11 accepts) must not turn an unauthenticated request into a 500.
+        query_string = scope.get("query_string", b"").decode("latin-1")
         auth_password = _extract_auth_param(query_string)
 
         if auth_password:
